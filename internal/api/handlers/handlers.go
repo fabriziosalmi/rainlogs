@@ -25,6 +25,7 @@ type Handlers struct {
 	kms     *kms.Encryptor
 	queue   *asynq.Client
 	storage *storage.MultiStore
+	Export  *ExportHandler
 }
 
 func NewHandlers(db *db.DB, kms *kms.Encryptor, queue *asynq.Client, store *storage.MultiStore) *Handlers {
@@ -33,6 +34,7 @@ func NewHandlers(db *db.DB, kms *kms.Encryptor, queue *asynq.Client, store *stor
 		kms:     kms,
 		queue:   queue,
 		storage: store,
+		Export:  NewExportHandler(db, queue, kms),
 	}
 }
 
@@ -476,8 +478,9 @@ func (h *Handlers) GetZoneLogs(c echo.Context) error {
 // ── API Key Handlers ──────────────────────────────────────────────────────────
 
 type CreateAPIKeyRequest struct {
-	Label         string `json:"label"           validate:"required"`
-	ExpiresInDays int    `json:"expires_in_days"` // 0 = never expires
+	Label         string          `json:"label"           validate:"required"`
+	ExpiresInDays int             `json:"expires_in_days"` // 0 = never expires
+	Role          models.UserRole `json:"role"`            // "admin" or "viewer"
 }
 
 func (h *Handlers) CreateAPIKey(c echo.Context) error {
@@ -494,6 +497,14 @@ func (h *Handlers) CreateAPIKey(c echo.Context) error {
 		return apiErr(c, http.StatusBadRequest, "label is required", "INVALID_REQUEST")
 	}
 
+	// Validate Role
+	if req.Role != "" && req.Role != models.RoleAdmin && req.Role != models.RoleViewer {
+		return apiErr(c, http.StatusBadRequest, "invalid role (must be 'admin' or 'viewer')", "INVALID_REQUEST")
+	}
+	if req.Role == "" {
+		req.Role = models.RoleAdmin // Default
+	}
+
 	plaintext, hash, prefix, err := auth.GenerateAPIKey()
 	if err != nil {
 		return apiErr(c, http.StatusInternalServerError, "failed to generate api key")
@@ -505,6 +516,7 @@ func (h *Handlers) CreateAPIKey(c echo.Context) error {
 		Prefix:     prefix,
 		KeyHash:    hash,
 		Label:      req.Label,
+		Role:       req.Role,
 	}
 	if req.ExpiresInDays > 0 {
 		t := time.Now().UTC().AddDate(0, 0, req.ExpiresInDays)
@@ -519,6 +531,7 @@ func (h *Handlers) CreateAPIKey(c echo.Context) error {
 		"id":         key.ID,
 		"label":      key.Label,
 		"prefix":     key.Prefix,
+		"role":       key.Role,
 		"created_at": key.CreatedAt,
 		"expires_at": key.ExpiresAt,
 		"api_key":    plaintext, // Shown only once – store securely

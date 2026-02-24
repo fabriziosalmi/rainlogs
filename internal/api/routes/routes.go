@@ -22,26 +22,34 @@ func Register(e *echo.Echo, database *db.DB, kms *kms.Encryptor, jwtSecret strin
 	api.Use(middleware.CustomerRateLimit(30, 60)) // 30 req/s, burst 60 per customer
 	api.Use(middleware.AuditLog(database.AuditEvents))
 
-	api.GET("/customers/:id", h.GetCustomer)       // own record only
-	api.DELETE("/customers/:id", h.DeleteCustomer) // GDPR Art. 17 – right to erasure
+	// Viewer / Common Routes
+	api.GET("/customers/:id", h.GetCustomer) // own record only
 
-	api.POST("/zones", h.CreateZone)
 	api.GET("/zones", h.ListZones)
-	api.PATCH("/zones/:zone_id", h.UpdateZone)
-	api.DELETE("/zones/:zone_id", h.DeleteZone)
-	api.POST("/zones/:zone_id/pull", h.TriggerPull)
 	api.GET("/zones/:zone_id/logs", h.GetZoneLogs)
-
-	api.POST("/api-keys", h.CreateAPIKey)
 	api.GET("/api-keys", h.ListAPIKeys)
-	api.DELETE("/api-keys/:key_id", h.RevokeAPIKey)
-
 	api.GET("/logs/jobs", h.ListLogJobs)
 	api.GET("/logs/jobs/:job_id", h.GetLogJob)
 	api.GET("/logs/jobs/:job_id/download", h.DownloadLogs)
-
+	api.GET("/exports/:id", h.Export.Get)
 	api.GET("/export", h.ExportCustomerData) // GDPR Art. 20 – data portability
 	api.GET("/audit-log", h.ListAuditLog)    // GDPR Art. 30 / NIS2 Art. 21
+
+	// Admin Only Routes
+	admin := api.Group("")
+	admin.Use(middleware.RequireAdmin())
+
+	admin.DELETE("/customers/:id", h.DeleteCustomer) // GDPR Art. 17 – right to erasure
+
+	admin.POST("/zones", h.CreateZone)
+	admin.PATCH("/zones/:zone_id", h.UpdateZone)
+	admin.DELETE("/zones/:zone_id", h.DeleteZone)
+	admin.POST("/zones/:zone_id/pull", h.TriggerPull)
+
+	admin.POST("/api-keys", h.CreateAPIKey)
+	admin.DELETE("/api-keys/:key_id", h.RevokeAPIKey)
+
+	admin.POST("/exports", h.Export.Create)
 
 	// ── JWT protected (dashboard / internal) ────────────────────────────────
 	dash := e.Group("/dashboard")

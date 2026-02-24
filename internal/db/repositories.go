@@ -80,15 +80,20 @@ func NewAPIKeyRepository(db *pgxpool.Pool) *APIKeyRepository {
 }
 
 func (r *APIKeyRepository) Create(ctx context.Context, k *models.APIKey) error {
-	const q = `INSERT INTO api_keys(id,customer_id,prefix,key_hash,label,expires_at,created_at)
-		VALUES($1,$2,$3,$4,$5,$6,now()) RETURNING created_at`
+	const q = `INSERT INTO api_keys(id,customer_id,prefix,key_hash,label,role,expires_at,created_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,now()) RETURNING created_at`
+	// Fallback for role if not set (though DB default handles it, Go struct zero value is "")
+	role := k.Role
+	if role == "" {
+		role = models.RoleAdmin
+	}
 	return r.db.QueryRow(ctx, q,
-		k.ID, k.CustomerID, k.Prefix, k.KeyHash, k.Label, k.ExpiresAt,
+		k.ID, k.CustomerID, k.Prefix, k.KeyHash, k.Label, role, k.ExpiresAt,
 	).Scan(&k.CreatedAt)
 }
 
 func (r *APIKeyRepository) GetByPrefix(ctx context.Context, prefix string) ([]*models.APIKey, error) {
-	const q = `SELECT id,customer_id,prefix,key_hash,label,created_at,last_used_at,revoked_at,expires_at
+	const q = `SELECT id,customer_id,prefix,key_hash,label,role,created_at,last_used_at,revoked_at,expires_at
 		FROM api_keys WHERE prefix=$1 AND revoked_at IS NULL`
 	rows, err := r.db.Query(ctx, q, prefix)
 	if err != nil {
@@ -98,7 +103,7 @@ func (r *APIKeyRepository) GetByPrefix(ctx context.Context, prefix string) ([]*m
 	var out []*models.APIKey
 	for rows.Next() {
 		k := &models.APIKey{}
-		if err := rows.Scan(&k.ID, &k.CustomerID, &k.Prefix, &k.KeyHash, &k.Label,
+		if err := rows.Scan(&k.ID, &k.CustomerID, &k.Prefix, &k.KeyHash, &k.Label, &k.Role,
 			&k.CreatedAt, &k.LastUsedAt, &k.RevokedAt, &k.ExpiresAt); err != nil {
 			return nil, err
 		}
@@ -127,11 +132,11 @@ func (r *APIKeyRepository) RevokeByCustomer(ctx context.Context, customerID uuid
 }
 
 func (r *APIKeyRepository) GetByCustomerAndID(ctx context.Context, customerID, keyID uuid.UUID) (*models.APIKey, error) {
-	const q = `SELECT id,customer_id,prefix,key_hash,label,created_at,last_used_at,revoked_at,expires_at
+	const q = `SELECT id,customer_id,prefix,key_hash,label,role,created_at,last_used_at,revoked_at,expires_at
 		FROM api_keys WHERE customer_id=$1 AND id=$2`
 	k := &models.APIKey{}
 	err := r.db.QueryRow(ctx, q, customerID, keyID).Scan(
-		&k.ID, &k.CustomerID, &k.Prefix, &k.KeyHash, &k.Label,
+		&k.ID, &k.CustomerID, &k.Prefix, &k.KeyHash, &k.Label, &k.Role,
 		&k.CreatedAt, &k.LastUsedAt, &k.RevokedAt, &k.ExpiresAt,
 	)
 	if err != nil {
@@ -141,7 +146,7 @@ func (r *APIKeyRepository) GetByCustomerAndID(ctx context.Context, customerID, k
 }
 
 func (r *APIKeyRepository) ListByCustomer(ctx context.Context, customerID uuid.UUID) ([]*models.APIKey, error) {
-	const q = `SELECT id,customer_id,prefix,key_hash,label,created_at,last_used_at,revoked_at,expires_at
+	const q = `SELECT id,customer_id,prefix,key_hash,label,role,created_at,last_used_at,revoked_at,expires_at
 		FROM api_keys WHERE customer_id=$1 ORDER BY created_at DESC`
 	rows, err := r.db.Query(ctx, q, customerID)
 	if err != nil {
@@ -151,7 +156,7 @@ func (r *APIKeyRepository) ListByCustomer(ctx context.Context, customerID uuid.U
 	var out []*models.APIKey
 	for rows.Next() {
 		k := &models.APIKey{}
-		if err := rows.Scan(&k.ID, &k.CustomerID, &k.Prefix, &k.KeyHash, &k.Label,
+		if err := rows.Scan(&k.ID, &k.CustomerID, &k.Prefix, &k.KeyHash, &k.Label, &k.Role,
 			&k.CreatedAt, &k.LastUsedAt, &k.RevokedAt, &k.ExpiresAt); err != nil {
 			return nil, err
 		}
@@ -364,6 +369,16 @@ func (r *LogJobRepository) MarkVerified(ctx context.Context, id uuid.UUID) error
 	return err
 }
 
+func (r *LogJobRepository) ListForExport(ctx context.Context, customerID uuid.UUID, start, end time.Time) ([]*models.LogJob, error) {
+	const q = `SELECT id,zone_id,customer_id,period_start,period_end,status,
+			s3_key,s3_provider,sha256,chain_hash,byte_count,log_count,attempts,err_msg,verified_at,created_at,updated_at
+		FROM log_jobs
+		WHERE customer_id=$1
+		  AND status='done'
+		  AND period_start >= $2 AND period_end <= $3`
+	return r.scanJobs(ctx, q, customerID, start, end)
+}
+
 func (r *LogJobRepository) scanJobs(ctx context.Context, q string, args ...interface{}) ([]*models.LogJob, error) {
 	rows, err := r.db.Query(ctx, q, args...)
 	if err != nil {
@@ -462,4 +477,39 @@ func (r *ZoneRepository) ListActive(ctx context.Context) ([]*models.Zone, error)
 		FROM zones
 		WHERE active = true AND deleted_at IS NULL`
 	return r.scanZones(ctx, q)
+}
+
+// ── LogExportRepository ───────────────────────────────────────────────────────
+
+type LogExportRepository struct{ db *pgxpool.Pool }
+
+func NewLogExportRepository(db *pgxpool.Pool) *LogExportRepository {
+	return &LogExportRepository{db: db}
+}
+
+func (r *LogExportRepository) Create(ctx context.Context, e *models.LogExport) error {
+	const q = `INSERT INTO log_exports(id,customer_id,s3_config_enc,filter_start,filter_end,status,created_at,updated_at)
+		VALUES($1,$2,$3,$4,$5,$6,now(),now())
+		RETURNING created_at,updated_at`
+	return r.db.QueryRow(ctx, q, e.ID, e.CustomerID, e.S3ConfigEnc, e.FilterStart, e.FilterEnd, e.Status).Scan(&e.CreatedAt, &e.UpdatedAt)
+}
+
+func (r *LogExportRepository) Update(ctx context.Context, e *models.LogExport) error {
+	const q = `UPDATE log_exports SET status=$2, log_count=$3, byte_count=$4, error_msg=$5, updated_at=now() WHERE id=$1`
+	_, err := r.db.Exec(ctx, q, e.ID, e.Status, e.LogCount, e.ByteCount, e.ErrorMsg)
+	return err
+}
+
+func (r *LogExportRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.LogExport, error) {
+	const q = `SELECT id,customer_id,s3_config_enc,filter_start,filter_end,status,log_count,byte_count,error_msg,created_at,updated_at
+		FROM log_exports WHERE id=$1`
+	e := &models.LogExport{}
+	err := r.db.QueryRow(ctx, q, id).Scan(
+		&e.ID, &e.CustomerID, &e.S3ConfigEnc, &e.FilterStart, &e.FilterEnd,
+		&e.Status, &e.LogCount, &e.ByteCount, &e.ErrorMsg, &e.CreatedAt, &e.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("log_export get: %w", err)
+	}
+	return e, nil
 }

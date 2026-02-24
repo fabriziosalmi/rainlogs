@@ -15,6 +15,9 @@ Rainlogs was built with a few core principles in mind:
 
 - **Cloudflare Log Pulling**: Automatically fetch and store Cloudflare logs.
 - **S3 Storage**: Store logs in any S3-compatible storage (defaults to the bundled Garage S3).
+- **Bulk Export**: Efficiently move large log volumes to external S3 buckets.
+- **WORM Compliance**: Cryptographic chain verification for tamper-evident data integrity.
+- **RBAC**: Secure your deployment with Admin and Viewer roles.
 - **Background Processing**: Robust job queues powered by [Asynq](https://github.com/hibiken/asynq).
 - **Real-time Monitoring**: Built-in Asynqmon dashboard for queue visibility.
 - **Multi-provider Failover**: Support for S3 failover (e.g., Contabo + Hetzner).

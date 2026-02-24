@@ -117,6 +117,7 @@ func main() {
 	securityProcessor := worker.NewSecurityEventsProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, log, notifier)
 	verifyProcessor := worker.NewLogVerifyProcessor(database, s3Client, log)
 	expireProcessor := worker.NewLogExpireProcessor(database, s3Client, log)
+	exportProcessor := worker.NewLogExportProcessor(database, kmsService, s3Client, log, notifier)
 
 	// 6b. Init Instant Logs Daemon
 	instantLogsManager := worker.NewInstantLogsManager(database, kmsService, s3Client, cfg.Cloudflare, log, notifier)
@@ -143,6 +144,7 @@ func main() {
 	mux.HandleFunc(queue.TypeLogPull, pullProcessor.ProcessTask)
 	mux.HandleFunc(queue.TypeSecurityPoll, securityProcessor.ProcessTask)
 	mux.HandleFunc(queue.TypeLogVerify, verifyProcessor.ProcessTask)
+	mux.HandleFunc(queue.TypeLogExport, exportProcessor.ProcessTask)
 	mux.HandleFunc(queue.TypeLogExpire, expireProcessor.ProcessTask)
 
 	go func() {

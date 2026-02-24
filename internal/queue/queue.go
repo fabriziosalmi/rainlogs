@@ -15,6 +15,7 @@ const (
 	TypeInstantLogs  = "log:instant" // Streaming job (Business)
 	TypeLogVerify    = "log:verify"
 	TypeLogExpire    = "log:expire"
+	TypeLogExport    = "log:export"
 
 	QueueCritical = "critical"
 	QueueDefault  = "default"

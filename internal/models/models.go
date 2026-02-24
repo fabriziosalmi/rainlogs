@@ -30,6 +30,13 @@ type Customer struct {
 	QuotaBytes    int64      `db:"quota_bytes"    json:"quota_bytes"` // -1 for unlimited
 }
 
+type UserRole string
+
+const (
+	RoleAdmin  UserRole = "admin"
+	RoleViewer UserRole = "viewer"
+)
+
 // APIKey is a hashed bearer token for a customer.
 type APIKey struct {
 	ID         uuid.UUID  `db:"id"           json:"id"`
@@ -37,6 +44,7 @@ type APIKey struct {
 	Prefix     string     `db:"prefix"       json:"prefix"`
 	KeyHash    string     `db:"key_hash"     json:"-"`
 	Label      string     `db:"label"        json:"label"`
+	Role       UserRole   `db:"role"         json:"role"`
 	CreatedAt  time.Time  `db:"created_at"   json:"created_at"`
 	LastUsedAt *time.Time `db:"last_used_at" json:"last_used_at,omitempty"`
 	RevokedAt  *time.Time `db:"revoked_at"   json:"revoked_at,omitempty"`

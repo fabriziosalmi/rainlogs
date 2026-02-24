@@ -69,6 +69,19 @@ func APIKeyAuth(database *db.DB) echo.MiddlewareFunc {
 			}(validKey.ID)
 
 			c.Set(ContextKeyCustomerID, validKey.CustomerID)
+			c.Set("role", validKey.Role)
+			return next(c)
+		}
+	}
+}
+
+func RequireAdmin() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			role, ok := c.Get("role").(models.UserRole)
+			if !ok || role != models.RoleAdmin {
+				return echo.NewHTTPError(http.StatusForbidden, "admin role required")
+			}
 			return next(c)
 		}
 	}

@@ -7,14 +7,16 @@ RainLogs collects logs from Cloudflare zones and stores them in **EU-sovereign o
 ## Features
 
 ### 🛡️ Compliance & Security
-- **WORM Storage**: Logs are hash-chained (SHA-256) to detect tampering.
-- **Verification Tool**: Built-in CLI `rainlogs-verify` to audit the cryptographic chain integrity.
+- **WORM Storage**: Logs are hash-chained (SHA-256) to verify tampering.
+- **Verification Tool**: Built-in CLI `rainlogs-verify` to audit cryptographic chain integrity.
 - **EU Sovereignty**: Compatible with S3-compliant EU storage providers (Garage, Hetzner).
 - **GDPR**: Automated retention policies (e.g., 395 days).
+- **RBAC**: Role-Based Access Control with Admin/Viewer roles for secure team access.
 
 ### 🚀 Performance & Reliability
 - **Smart Polling**: Adapts to Cloudflare plans (Logpull for Enterprise, Instant Logs for Business, GraphQL for Free/Pro).
-- **Resilience**: Automatic retries, exponential backoff, and circuit breakers.
+- **Bulk Export**: Efficiently export large volumes of logs to your own S3 bucket (Logpush replacement).
+- **Resilience**: Automatic retries, exponential backoff, circuit breakers.
 - **Storage Failover**: Support for primary and secondary S3 buckets for high availability.
 - **Quotas**: Configurable storage limits per customer to prevent abuse.
 

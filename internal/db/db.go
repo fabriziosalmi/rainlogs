@@ -17,6 +17,7 @@ type DB struct {
 	LogJobs     *LogJobRepository
 	LogObjects  *LogObjectRepository
 	AuditEvents *AuditEventRepository
+	LogExports  *LogExportRepository
 }
 
 // Connect returns a pgxpool.Pool configured from cfg.
@@ -46,6 +47,7 @@ func Connect(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
 		LogJobs:     NewLogJobRepository(pool),
 		LogObjects:  NewLogObjectRepository(pool),
 		AuditEvents: NewAuditEventRepository(pool),
+		LogExports:  NewLogExportRepository(pool),
 	}, nil
 }
 
