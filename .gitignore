@@ -1,0 +1,26 @@
+# Binaries
+bin/
+*.exe
+*.test
+
+# Environment
+.env
+.env.local
+
+# Editor artifacts
+.idea/
+.vscode/
+*.swp
+
+# macOS
+.DS_Store
+
+# Go build cache
+vendor/
+go.work.sum
+
+# Docker volumes (if mounted locally)
+docker/postgres/
+docker/redis/
+docker/garage/data/
+docker/garage/meta/

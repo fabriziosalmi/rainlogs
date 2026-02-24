@@ -1,0 +1,126 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: rainlogs-migration
+  namespace: rainlogs
+spec:
+  template:
+    spec:
+      containers:
+      - name: migrate
+        image: migrate/migrate:v4.17.0
+        command: ["/bin/sh", "-c", "/migrate -path=/migrations -database $DATABASE_URL up"]
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_DATABASE_DSN
+        volumeMounts:
+        - name: migrations
+          mountPath: /migrations
+      volumes:
+      - name: migrations
+        configMap:
+          name: rainlogs-migrations
+      restartPolicy: OnFailure
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rainlogs-api
+  namespace: rainlogs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rainlogs-api
+  template:
+    metadata:
+      labels:
+        app: rainlogs-api
+    spec:
+      containers:
+      - name: api
+        image: rainlogs-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: RAINLOGS_APP_ENV
+          value: "production"
+        - name: RAINLOGS_DATABASE_DSN
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_DATABASE_DSN
+        - name: RAINLOGS_REDIS_ADDR
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_REDIS_ADDR
+        - name: RAINLOGS_S3_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_S3_ENDPOINT
+        - name: RAINLOGS_STORAGE_BACKEND
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_STORAGE_BACKEND
+        - name: RAINLOGS_STORAGE_FS_ROOT
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_STORAGE_FS_ROOT
+        # Add other env vars from secret/configmap
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rainlogs
+  namespace: rainlogs
+spec:
+  ports:
+  - port: 80
+    targetPort: 8080
+    name: http
+  selector:
+    app: rainlogs-api
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rainlogs-worker
+  namespace: rainlogs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rainlogs-worker
+  template:
+    metadata:
+      labels:
+        app: rainlogs-worker
+    spec:
+      containers:
+      - name: worker
+        image: rainlogs-worker:latest
+        imagePullPolicy: IfNotPresent
+        command: ["/rainlogs-worker"] 
+        env:
+        - name: RAINLOGS_APP_ENV
+          value: "production"
+        - name: RAINLOGS_STORAGE_BACKEND
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_STORAGE_BACKEND
+        - name: RAINLOGS_STORAGE_FS_ROOT
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_STORAGE_FS_ROOT
+        # Add other env vars

@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: garage
+  namespace: rainlogs
+spec:
+  serviceName: "garage"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: garage
+  template:
+    metadata:
+      labels:
+        app: garage
+    spec:
+      containers:
+      - name: garage
+        image: dxflrs/garage:v1.0.1
+        env:
+        - name: GARAGE_RPC_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: rainlogs-secret
+              key: GARAGE_RPC_SECRET
+        ports:
+        - containerPort: 3900
+          name: s3-api
+        - containerPort: 3903
+          name: admin-api
+        volumeMounts:
+        - name: garage-data
+          mountPath: /var/lib/garage/data
+        - name: garage-meta
+          mountPath: /var/lib/garage/meta
+        - name: garage-config
+          mountPath: /etc/garage.toml
+          subPath: garage.toml
+      volumes:
+      - name: garage-config
+        configMap:
+          name: garage-config
+  volumeClaimTemplates:
+  - metadata:
+      name: garage-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+  - metadata:
+      name: garage-meta
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 100Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: garage
+  namespace: rainlogs
+spec:
+  ports:
+  - port: 3900
+    name: s3-api
+  - port: 3903
+    name: admin-api
+  selector:
+    app: garage
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: garage-config
+  namespace: rainlogs
+data:
+  garage.toml: |
+    metadata_dir = "/var/lib/garage/meta"
+    data_dir = "/var/lib/garage/data"
+    replication_mode = "none"
+
+    [rpc]
+    bind_addr = "[::]:3901"
+    public_addr = "garage-0.garage.rainlogs.svc.cluster.local:3901"
+
+    [s3_api]
+    s3_region = "garage"
+    api_bind_addr = "[::]:3900"
+    root_domain = ".s3.garage.localhost"
+
+    [s3_web]
+    bind_addr = "[::]:3902"
+    root_domain = ".web.garage.localhost"
+    enabled = true
+
+    [admin]
+    api_bind_addr = "[::]:3903"
