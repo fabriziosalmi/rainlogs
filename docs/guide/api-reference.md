@@ -24,7 +24,7 @@ Returns the health status of the service and its dependencies.
 ```json
 {
   "status": "ok",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "deps": {
     "postgres": { "status": "ok" }
   }
@@ -35,7 +35,7 @@ Returns the health status of the service and its dependencies.
 ```json
 {
   "status": "degraded",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "deps": {
     "postgres": { "status": "error", "error": "connection refused" }
   }
