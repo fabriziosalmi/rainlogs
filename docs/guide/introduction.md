@@ -19,6 +19,8 @@
 - **Resilience**: Robust job processing with circuit breakers, exponential backoff, and dead-letter queues.
 - **Observability**: Prometheus metrics and OpenTelemetry-compatible structured logging.
 
+You can learn more about how to address these regulations in our [Compliance Guide](../compliance/nis2.md).
+
 ## Rationale
 
 Organizations operating under strict regulatory frameworks (NIS2, D.Lgs. 138/2024) require log retention periods that often exceed standard provider limits (e.g., Cloudflare's 7-day Logpull retention). Rainlogs provides a compliant, self-hosted archive solution that guarantees data integrity and sovereignty while eliminating the complexity of building custom ingestion pipelines.
