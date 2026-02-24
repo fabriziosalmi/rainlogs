@@ -118,20 +118,22 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 		return fmt.Errorf("update job: %w", err)
 	}
 
-	// 8. Enqueue Verify Task
+	// 8. Enqueue Verify Task – non-fatal but must be visible: a missing
+	// verification means the WORM integrity check is silently skipped.
 	verifyTask, err := queue.NewLogVerifyTask(queue.LogVerifyPayload{JobID: job.ID})
 	if err != nil {
-		log.Printf("failed to enqueue verify task: %v", err)
-	} else {
-		if _, err := p.queue.EnqueueContext(ctx, verifyTask); err != nil {
-			log.Printf("failed to enqueue verify task: %v", err)
-		}
+		log.Printf("WARN: job %s: create verify task: %v (integrity check skipped)", job.ID, err)
+		return nil
+	}
+	if _, err := p.queue.EnqueueContext(ctx, verifyTask); err != nil {
+		log.Printf("WARN: job %s: enqueue verify task: %v (integrity check skipped)", job.ID, err)
 	}
 
 	return nil
 }
 
 func (p *LogPullProcessor) failJob(ctx context.Context, job *models.LogJob, err error) error {
+	job.Attempts++
 	job.Status = models.JobStatusFailed
 	job.ErrMsg = err.Error()
 	_ = p.db.LogJobs.Update(ctx, job)

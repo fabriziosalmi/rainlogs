@@ -78,7 +78,11 @@ func main() {
 	e.Use(apimw.SecurityHeaders())
 	e.Use(echomw.Logger())
 	e.Use(echomw.Recover())
-	e.Use(echomw.CORS())
+	e.Use(echomw.CORSWithConfig(echomw.CORSConfig{
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodOptions},
+		AllowHeaders: []string{echo.HeaderAuthorization, echo.HeaderContentType, echo.HeaderAccept},
+		MaxAge:       3600,
+	}))
 	e.Use(echomw.GzipWithConfig(echomw.GzipConfig{Level: 5}))
 	// 60 req/s per IP, burst of 120
 	e.Use(apimw.RateLimit(60, 120))

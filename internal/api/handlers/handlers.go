@@ -47,6 +47,17 @@ func apiErr(c echo.Context, code int, msg string) error {
 	return c.JSON(code, errResponse{Code: code, Message: msg, ReqID: reqID})
 }
 
+// mustCustomerID extracts the authenticated customer UUID from the Echo context.
+// Returns a 500 if middleware failed to populate the value (should never happen
+// on a properly guarded route, but avoids a nil-pointer panic if it does).
+func mustCustomerID(c echo.Context) (uuid.UUID, error) {
+	v, ok := c.Get(middleware.ContextKeyCustomerID).(uuid.UUID)
+	if !ok {
+		return uuid.UUID{}, apiErr(c, http.StatusInternalServerError, "auth context missing")
+	}
+	return v, nil
+}
+
 // ── Customer Handlers ─────────────────────────────────────────────────────────
 
 type CreateCustomerRequest struct {
@@ -111,7 +122,10 @@ type CreateZoneRequest struct {
 }
 
 func (h *Handlers) CreateZone(c echo.Context) error {
-	customerID := c.Get(middleware.ContextKeyCustomerID).(uuid.UUID)
+	customerID, err := mustCustomerID(c)
+	if err != nil {
+		return err
+	}
 
 	var req CreateZoneRequest
 	if err := c.Bind(&req); err != nil {
@@ -139,7 +153,10 @@ func (h *Handlers) CreateZone(c echo.Context) error {
 }
 
 func (h *Handlers) ListZones(c echo.Context) error {
-	customerID := c.Get(middleware.ContextKeyCustomerID).(uuid.UUID)
+	customerID, err := mustCustomerID(c)
+	if err != nil {
+		return err
+	}
 
 	zones, err := h.db.Zones.ListByCustomer(c.Request().Context(), customerID)
 	if err != nil {
@@ -150,7 +167,10 @@ func (h *Handlers) ListZones(c echo.Context) error {
 }
 
 func (h *Handlers) DeleteZone(c echo.Context) error {
-	customerID := c.Get(middleware.ContextKeyCustomerID).(uuid.UUID)
+	customerID, err := mustCustomerID(c)
+	if err != nil {
+		return err
+	}
 
 	zoneID, err := uuid.Parse(c.Param("zone_id"))
 	if err != nil {
@@ -176,7 +196,10 @@ func (h *Handlers) DeleteZone(c echo.Context) error {
 
 // TriggerPull enqueues an immediate log pull for a zone.
 func (h *Handlers) TriggerPull(c echo.Context) error {
-	customerID := c.Get(middleware.ContextKeyCustomerID).(uuid.UUID)
+	customerID, err := mustCustomerID(c)
+	if err != nil {
+		return err
+	}
 
 	zoneID, err := uuid.Parse(c.Param("zone_id"))
 	if err != nil {
@@ -226,7 +249,10 @@ type CreateAPIKeyRequest struct {
 }
 
 func (h *Handlers) CreateAPIKey(c echo.Context) error {
-	customerID := c.Get(middleware.ContextKeyCustomerID).(uuid.UUID)
+	customerID, err := mustCustomerID(c)
+	if err != nil {
+		return err
+	}
 
 	var req CreateAPIKeyRequest
 	if err := c.Bind(&req); err != nil {
@@ -263,7 +289,10 @@ func (h *Handlers) CreateAPIKey(c echo.Context) error {
 }
 
 func (h *Handlers) ListAPIKeys(c echo.Context) error {
-	customerID := c.Get(middleware.ContextKeyCustomerID).(uuid.UUID)
+	customerID, err := mustCustomerID(c)
+	if err != nil {
+		return err
+	}
 
 	keys, err := h.db.APIKeys.ListByCustomer(c.Request().Context(), customerID)
 	if err != nil {
@@ -274,7 +303,10 @@ func (h *Handlers) ListAPIKeys(c echo.Context) error {
 }
 
 func (h *Handlers) RevokeAPIKey(c echo.Context) error {
-	customerID := c.Get(middleware.ContextKeyCustomerID).(uuid.UUID)
+	customerID, err := mustCustomerID(c)
+	if err != nil {
+		return err
+	}
 
 	keyID, err := uuid.Parse(c.Param("key_id"))
 	if err != nil {
@@ -307,7 +339,10 @@ func (h *Handlers) RevokeAPIKey(c echo.Context) error {
 // ── Log Job Handlers ──────────────────────────────────────────────────────────
 
 func (h *Handlers) ListLogJobs(c echo.Context) error {
-	customerID := c.Get(middleware.ContextKeyCustomerID).(uuid.UUID)
+	customerID, err := mustCustomerID(c)
+	if err != nil {
+		return err
+	}
 
 	limit := 50
 	offset := 0
@@ -331,7 +366,10 @@ func (h *Handlers) ListLogJobs(c echo.Context) error {
 }
 
 func (h *Handlers) GetLogJob(c echo.Context) error {
-	customerID := c.Get(middleware.ContextKeyCustomerID).(uuid.UUID)
+	customerID, err := mustCustomerID(c)
+	if err != nil {
+		return err
+	}
 
 	jobID, err := uuid.Parse(c.Param("job_id"))
 	if err != nil {
@@ -351,7 +389,10 @@ func (h *Handlers) GetLogJob(c echo.Context) error {
 
 // DownloadLogs streams the raw (decompressed) NDJSON log data for a job.
 func (h *Handlers) DownloadLogs(c echo.Context) error {
-	customerID := c.Get(middleware.ContextKeyCustomerID).(uuid.UUID)
+	customerID, err := mustCustomerID(c)
+	if err != nil {
+		return err
+	}
 
 	jobID, err := uuid.Parse(c.Param("job_id"))
 	if err != nil {

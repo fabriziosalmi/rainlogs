@@ -11,7 +11,7 @@ import (
 )
 
 func TestFSStore(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "startlogs-test-storage")
+	tmpDir, err := os.MkdirTemp("", "rainlogs-test-storage")
 	if err != nil {
 		t.Fatal(err)
 	}

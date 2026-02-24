@@ -123,8 +123,6 @@ func Load() (*Config, error) {
 	v.SetDefault("jwt.secret", "")
 
 	v.SetDefault("cloudflare.base_url", "https://api.cloudflare.com/client/v4")
-	v.SetDefault("cloudflare.api_token", "")
-
 	v.SetDefault("cloudflare.request_timeout", "30s")
 	v.SetDefault("cloudflare.max_window_size", "1h")
 	v.SetDefault("kms.key", "")

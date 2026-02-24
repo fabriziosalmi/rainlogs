@@ -30,7 +30,7 @@ func New(ctx context.Context, cfg config.S3Config, provider string) (*Store, err
 	opts := s3.Options{
 		Region:       cfg.Region,
 		Credentials:  credentials.NewStaticCredentialsProvider(cfg.AccessKeyID, cfg.SecretAccessKey, ""),
-		UsePathStyle: true,
+		UsePathStyle: cfg.ForcePathStyle,
 	}
 	if cfg.Endpoint != "" {
 		opts.BaseEndpoint = aws.String(cfg.Endpoint)
