@@ -96,7 +96,7 @@ func Load() (*Config, error) {
 	v.SetDefault("app.name", "rainlogs")
 	v.SetDefault("app.env", "development")
 	v.SetDefault("app.port", 8080)
-	v.SetDefault("app.version", "0.1.0")
+	v.SetDefault("app.version", "0.5.1")
 	v.SetDefault("database.dsn", "")
 
 	v.SetDefault("database.max_open_conns", 25)

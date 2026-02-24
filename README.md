@@ -5,7 +5,7 @@
 RainLogs collects logs from Cloudflare zones via the **Logpull API** (available on Free, Pro, and Business plans) and stores them in **EU-sovereign object storage** (Garage S3-compatible, Hetzner, Contabo) with **WORM integrity guarantees** suitable for NIS2 / D.Lgs. 138/2024 incident forensics.
 
 [![CI](https://github.com/fabriziosalmi/rainlogs/actions/workflows/ci.yml/badge.svg)](https://github.com/fabriziosalmi/rainlogs/actions/workflows/ci.yml)
-[![Go 1.25](https://img.shields.io/badge/go-1.25-blue)](https://go.dev)
+[![Go 1.24](https://img.shields.io/badge/go-1.24-blue)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 ## Why
@@ -60,8 +60,8 @@ RainLogs collects logs from Cloudflare zones via the **Logpull API** (available 
 
 | Component | Tech | Notes |
 |-----------|------|-------|
-| API server | Go 1.25 + Echo v4 | REST, API-key + JWT auth, per-customer rate limiting, security headers, Prometheus metrics |
-| Worker | Go 1.25 + asynq | Pulls CF logs, stores WORM objects, verifies integrity |
+| API server | Go 1.24 + Echo v4 | REST, API-key + JWT auth, per-customer rate limiting, security headers, Prometheus metrics |
+| Worker | Go 1.24 + asynq | Pulls CF logs, stores WORM objects, verifies integrity |
 | Queue | Redis 7 (asynq) | Reliable at-least-once delivery, retry with exponential backoff |
 | Database | PostgreSQL 16 | Customers, zones, log jobs, WORM chain hashes |
 | Object store | Garage / S3-compatible | EU-sovereign, partitioned by zone/date/hour, multi-provider failover |
@@ -102,7 +102,7 @@ kubectl apply -f k8s/
 
 ### Prerequisites
 
-- Go ≥ 1.25
+- Go ≥ 1.24
 - Docker + Docker Compose v2
 - `make`
 
