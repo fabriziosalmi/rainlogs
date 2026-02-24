@@ -57,7 +57,7 @@ func createCustomer(t *testing.T) string {
 	if resp.StatusCode != http.StatusCreated {
 		// print body for debugging
 		var buf bytes.Buffer
-		buf.ReadFrom(resp.Body) //nolint:errcheck // best-effort debug output
+		_, _ = buf.ReadFrom(resp.Body) //nolint:errcheck // best-effort debug output
 		t.Fatalf("expected 201 Created, got %d: %s", resp.StatusCode, buf.String())
 	}
 

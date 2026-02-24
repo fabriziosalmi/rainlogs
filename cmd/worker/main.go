@@ -38,7 +38,8 @@ func main() {
 	database, err := db.Connect(ctx, cfg.Database)
 	if err != nil {
 		cancel()
-		log.Fatal("failed to connect to db", zap.Error(err))
+		log.Error("failed to connect to db", zap.Error(err))
+		return
 	}
 	defer database.Close()
 

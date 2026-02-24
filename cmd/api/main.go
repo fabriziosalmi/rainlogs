@@ -42,7 +42,9 @@ func main() {
 	// 1. Init DB
 	database, err := db.Connect(ctx, cfg.Database)
 	if err != nil {
-		log.Fatal("failed to connect to db", zap.Error(err))
+		cancel()
+		log.Error("failed to connect to db", zap.Error(err))
+		return
 	}
 	defer database.Close()
 
@@ -86,7 +88,19 @@ func main() {
 	// Global middleware
 	e.Use(apimw.RequestID())
 	e.Use(apimw.SecurityHeaders())
-	e.Use(echomw.Logger())
+	e.Use(echomw.RequestLoggerWithConfig(echomw.RequestLoggerConfig{
+		LogStatus: true,
+		LogURI:    true,
+		LogMethod: true,
+		LogValuesFunc: func(c echo.Context, v echomw.RequestLoggerValues) error {
+			log.Info("http request",
+				zap.String("method", v.Method),
+				zap.String("uri", v.URI),
+				zap.Int("status", v.Status),
+			)
+			return nil
+		},
+	}))
 	e.Use(echomw.Recover())
 	e.Use(echomw.CORSWithConfig(echomw.CORSConfig{
 		AllowMethods: []string{
