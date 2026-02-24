@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fabriziosalmi/rainlogs/internal/models"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/fabriziosalmi/rainlogs/internal/models"
 )
 
 const (

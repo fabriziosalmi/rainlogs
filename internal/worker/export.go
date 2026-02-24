@@ -10,14 +10,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/hibiken/asynq"
+	"go.uber.org/zap"
+
 	"github.com/fabriziosalmi/rainlogs/internal/db"
 	"github.com/fabriziosalmi/rainlogs/internal/kms"
 	"github.com/fabriziosalmi/rainlogs/internal/models"
 	"github.com/fabriziosalmi/rainlogs/internal/notifications"
 	"github.com/fabriziosalmi/rainlogs/internal/queue"
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
-	"github.com/hibiken/asynq"
-	"go.uber.org/zap"
 )
 
 type LogExportProcessor struct {
@@ -116,7 +117,9 @@ func (p *LogExportProcessor) ProcessTask(ctx context.Context, t *asynq.Task) err
 		return fmt.Errorf("update complete: %w", err)
 	}
 
-	p.notifier.SendAlert(ctx, exportJob.CustomerID.String(), "info", fmt.Sprintf("Bulk export completed: %d files uploaded", successCount))
+	if err := p.notifier.SendAlert(ctx, exportJob.CustomerID.String(), "info", fmt.Sprintf("Bulk export completed: %d files uploaded", successCount)); err != nil {
+		p.log.Warn("failed to send success alert", zap.Error(err))
+	}
 	return nil
 }
 
@@ -125,6 +128,8 @@ func (p *LogExportProcessor) failJob(ctx context.Context, job *models.LogExport,
 	job.Status = models.ExportStatusFailed
 	job.ErrorMsg = &msg
 	_ = p.db.LogExports.Update(ctx, job)
-	p.notifier.SendAlert(ctx, job.CustomerID.String(), "error", fmt.Sprintf("Bulk export failed: %v", err))
+	if alertErr := p.notifier.SendAlert(ctx, job.CustomerID.String(), "error", fmt.Sprintf("Bulk export failed: %v", err)); alertErr != nil {
+		p.log.Warn("failed to send failure alert", zap.Error(alertErr))
+	}
 	return err
 }

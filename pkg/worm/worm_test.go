@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fabriziosalmi/rainlogs/pkg/worm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/fabriziosalmi/rainlogs/pkg/worm"
 )
 
 func TestGenesisHash(t *testing.T) {

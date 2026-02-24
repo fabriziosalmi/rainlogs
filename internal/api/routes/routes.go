@@ -1,13 +1,14 @@
 package routes
 
 import (
+	"github.com/hibiken/asynq"
+	"github.com/labstack/echo/v4"
+
 	"github.com/fabriziosalmi/rainlogs/internal/api/handlers"
 	"github.com/fabriziosalmi/rainlogs/internal/api/middleware"
 	"github.com/fabriziosalmi/rainlogs/internal/db"
 	"github.com/fabriziosalmi/rainlogs/internal/kms"
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
-	"github.com/hibiken/asynq"
-	"github.com/labstack/echo/v4"
 )
 
 func Register(e *echo.Echo, database *db.DB, kms *kms.Encryptor, jwtSecret string, queue *asynq.Client, store *storage.MultiStore) {

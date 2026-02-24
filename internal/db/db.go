@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fabriziosalmi/rainlogs/internal/config"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/fabriziosalmi/rainlogs/internal/config"
 )
 
 type DB struct {

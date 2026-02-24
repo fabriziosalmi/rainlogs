@@ -31,7 +31,7 @@ type FirewallEvent struct {
 	ClientRequestQuery string    `json:"clientRequestQuery"`
 	Datetime           time.Time `json:"datetime"`
 	RayName            string    `json:"rayName"`
-	RuleId             string    `json:"ruleId"`
+	RuleID             string    `json:"ruleId"`
 	Source             string    `json:"source"`
 	UserAgent          string    `json:"userAgent"`
 }

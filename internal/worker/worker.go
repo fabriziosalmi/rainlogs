@@ -9,6 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/hibiken/asynq"
+	"go.uber.org/zap"
+	"golang.org/x/time/rate"
+
 	"github.com/fabriziosalmi/rainlogs/internal/cloudflare"
 	"github.com/fabriziosalmi/rainlogs/internal/config"
 	"github.com/fabriziosalmi/rainlogs/internal/db"
@@ -18,10 +23,6 @@ import (
 	"github.com/fabriziosalmi/rainlogs/internal/queue"
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
 	"github.com/fabriziosalmi/rainlogs/pkg/worm"
-	"github.com/google/uuid"
-	"github.com/hibiken/asynq"
-	"go.uber.org/zap"
-	"golang.org/x/time/rate"
 )
 
 type LogPullProcessor struct {
@@ -89,7 +90,9 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 		}
 		if usage >= customer.QuotaBytes {
 			msg := fmt.Sprintf("Quota exceeded for customer %s (Usage: %d, Limit: %d)", customer.Name, usage, customer.QuotaBytes)
-			p.notifier.SendAlert(ctx, customer.ID.String(), "warning", msg)
+			if err := p.notifier.SendAlert(ctx, customer.ID.String(), "warning", msg); err != nil {
+				p.log.Warn("failed to send quota alert", zap.Error(err))
+			}
 			return p.failJob(ctx, job, fmt.Errorf("quota exceeded"))
 		}
 	}

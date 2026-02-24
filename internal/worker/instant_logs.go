@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/fabriziosalmi/rainlogs/internal/cloudflare"
 	"github.com/fabriziosalmi/rainlogs/internal/config"
 	"github.com/fabriziosalmi/rainlogs/internal/db"
@@ -13,7 +15,6 @@ import (
 	"github.com/fabriziosalmi/rainlogs/internal/models"
 	"github.com/fabriziosalmi/rainlogs/internal/notifications"
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
-	"go.uber.org/zap"
 )
 
 type InstantLogsManager struct {
@@ -79,10 +80,12 @@ func (m *InstantLogsManager) syncStreams(ctx context.Context) {
 	}
 
 	// Identify active Business zones
-	businessZones := make(map[string]models.Zone)
+	businessZones := make(map[string]*models.Zone)
 	for _, z := range zones {
 		if z.Plan == models.PlanBusiness {
-			businessZones[z.ID.String()] = *z
+			// Ensure we store a pointer to the zone, assuming zones is []*models.Zone
+			// Or if it's []models.Zone, Go 1.22 loop variable creates distinct address per iteration
+			businessZones[z.ID.String()] = z
 		}
 	}
 
@@ -100,36 +103,38 @@ func (m *InstantLogsManager) syncStreams(ctx context.Context) {
 
 	// 2. Start new streams
 	for id, zone := range businessZones {
-		if _, exists := m.streams[id]; !exists {
-			m.log.Info("starting instant logs stream", zap.String("zone", zone.Name))
-
-			// Create a child context for this stream
-			ctxZone, cancel := context.WithCancel(ctx)
-			m.streams[id] = cancel
-			m.wg.Add(1)
-
-			go func(z models.Zone) {
-				defer m.wg.Done()
-				// Run the stream manager for this zone until ctxZone is cancelled
-				m.runZoneStream(ctxZone, z)
-
-				// Cleanup on exit (if it wasn't cancelled by syncStreams)
-				m.mu.Lock()
-				if _, ok := m.streams[z.ID.String()]; ok {
-					// Only delete if we are still in the map (avoid race with syncStreams removal)
-					// Actually, we shouldn't delete here if we want to restart on error?
-					// runZoneStream loops forever until context cancel, so if we are here, context is done.
-					// We can just let the map be cleaned up by syncStreams or stopAll.
-				}
-				m.mu.Unlock()
-			}(zone)
+		if _, exists := m.streams[id]; exists {
+			continue
 		}
+
+		m.log.Info("starting instant logs stream", zap.String("zone", zone.Name))
+
+		// Create a child context for this stream
+		ctxZone, cancel := context.WithCancel(ctx)
+		m.streams[id] = cancel
+		m.wg.Add(1)
+
+		go func(z *models.Zone) {
+			defer m.wg.Done()
+			// Run the stream manager for this zone until ctxZone is cancelled
+			m.runZoneStream(ctxZone, z)
+
+			// Cleanup on exit (if it wasn't cancelled by syncStreams)
+			m.mu.Lock()
+			if _, ok := m.streams[z.ID.String()]; ok {
+				// Only delete if we are still in the map (avoid race with syncStreams removal)
+				// Actually, we shouldn't delete here if we want to restart on error?
+				// runZoneStream loops forever until context cancel, so if we are here, context is done.
+				// We can just let the map be cleaned up by syncStreams or stopAll.
+			}
+			m.mu.Unlock()
+		}(zone)
 	}
 }
 
 // runZoneStream manages the persistent connection life-cycle for a single zone.
 // It handles retries, backoffs, and uploading.
-func (m *InstantLogsManager) runZoneStream(ctx context.Context, zone models.Zone) {
+func (m *InstantLogsManager) runZoneStream(ctx context.Context, zone *models.Zone) {
 	// Exponential backoff for connection retries
 	minBackoff := 5 * time.Second
 	maxBackoff := 5 * time.Minute
@@ -152,7 +157,9 @@ func (m *InstantLogsManager) runZoneStream(ctx context.Context, zone models.Zone
 			)
 			// Only alert if we've been backing off for a while (e.g. > 1 minute), indicating persistent failure
 			if backoff > 1*time.Minute {
-				m.notifier.SendAlert(ctx, zone.ID.String(), "error", fmt.Sprintf("Instant logs stream persistent failure for zone %s: %v", zone.Name, err))
+				if notifyErr := m.notifier.SendAlert(ctx, zone.ID.String(), "error", fmt.Sprintf("Instant logs stream persistent failure for zone %s: %v", zone.Name, err)); notifyErr != nil {
+					m.log.Warn("failed to send persistent failure alert", zap.Error(notifyErr))
+				}
 			}
 		}
 
@@ -169,7 +176,7 @@ func (m *InstantLogsManager) runZoneStream(ctx context.Context, zone models.Zone
 	}
 }
 
-func (m *InstantLogsManager) streamSession(ctx context.Context, zone models.Zone) error {
+func (m *InstantLogsManager) streamSession(ctx context.Context, zone *models.Zone) error {
 	// Get Customer & Key (Refresh from DB to get latest key if rotated)
 	customer, err := m.db.Customers.GetByID(ctx, zone.CustomerID)
 	if err != nil {
@@ -198,6 +205,7 @@ func (m *InstantLogsManager) streamSession(ctx context.Context, zone models.Zone
 	lastUpload := time.Now()
 
 	// Helper to flush buffer
+	//nolint:contextcheck // We use a detached context intentionally to ensure upload completes even if session cancels
 	upload := func() {
 		if len(buffer) == 0 {
 			return

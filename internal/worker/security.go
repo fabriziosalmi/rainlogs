@@ -7,6 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/google/uuid"
+	"github.com/hibiken/asynq"
+	"go.uber.org/zap"
+	"golang.org/x/time/rate"
+
 	"github.com/fabriziosalmi/rainlogs/internal/cloudflare"
 	"github.com/fabriziosalmi/rainlogs/internal/config"
 	"github.com/fabriziosalmi/rainlogs/internal/db"
@@ -16,10 +21,6 @@ import (
 	"github.com/fabriziosalmi/rainlogs/internal/queue"
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
 	"github.com/fabriziosalmi/rainlogs/pkg/worm"
-	"github.com/google/uuid"
-	"github.com/hibiken/asynq"
-	"go.uber.org/zap"
-	"golang.org/x/time/rate"
 )
 
 type SecurityEventsProcessor struct {
@@ -87,7 +88,9 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 		}
 		if usage >= customer.QuotaBytes {
 			msg := fmt.Sprintf("Quota exceeded for customer %s (Usage: %d, Limit: %d)", customer.Name, usage, customer.QuotaBytes)
-			p.notifier.SendAlert(ctx, customer.ID.String(), "warning", msg)
+			if err := p.notifier.SendAlert(ctx, customer.ID.String(), "warning", msg); err != nil {
+				p.log.Warn("failed to send quota alert", zap.Error(err))
+			}
 			return p.failJob(ctx, job, fmt.Errorf("quota exceeded"))
 		}
 	}
@@ -118,7 +121,9 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 			zap.Time("start", payload.PeriodStart),
 			zap.Time("end", payload.PeriodEnd),
 		)
-		p.notifier.SendAlert(ctx, zone.ID.String(), "warning", fmt.Sprintf("Security events limit reached (1000) for zone %s. Potential data loss.", zone.Name))
+		if err := p.notifier.SendAlert(ctx, zone.ID.String(), "warning", fmt.Sprintf("Security events limit reached (1000) for zone %s. Potential data loss.", zone.Name)); err != nil {
+			p.log.Warn("failed to send security events warning", zap.Error(err))
+		}
 	}
 
 	if len(events) == 0 {
@@ -130,8 +135,8 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 
 	// 6. Convert to NDJSON
 	var buffer []byte
-	for _, event := range events {
-		line, err := json.Marshal(event)
+	for i := range events {
+		line, err := json.Marshal(&events[i])
 		if err != nil {
 			p.log.Error("failed to marshal event", zap.Error(err))
 			continue
@@ -183,7 +188,9 @@ func (p *SecurityEventsProcessor) failJob(ctx context.Context, job *models.LogJo
 	job.ErrMsg = err.Error()
 
 	// Send alert for failed job
-	p.notifier.SendAlert(ctx, job.ZoneID.String(), "error", fmt.Sprintf("Security events job failed for zone %s: %v", job.ZoneID, err))
+	if alertErr := p.notifier.SendAlert(ctx, job.ZoneID.String(), "error", fmt.Sprintf("Security events job failed for zone %s: %v", job.ZoneID, err)); alertErr != nil {
+		p.log.Warn("failed to send failure alert", zap.Error(alertErr))
+	}
 
 	_ = p.db.LogJobs.Update(ctx, job)
 	return err

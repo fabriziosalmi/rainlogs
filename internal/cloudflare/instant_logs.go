@@ -64,7 +64,10 @@ func (c *InstantLogsClient) StartSession(ctx context.Context) (string, error) {
 // Stream logs from WebSocket. Returns a channel of raw JSON bytes.
 func (c *InstantLogsClient) Stream(ctx context.Context, wsURL string) (<-chan []byte, error) {
 	dialer := websocket.DefaultDialer
-	conn, _, err := dialer.DialContext(ctx, wsURL, nil)
+	conn, resp, err := dialer.DialContext(ctx, wsURL, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("websocket dial: %w", err)
 	}

@@ -97,9 +97,9 @@ func (c *Client) PullLogs(ctx context.Context, from, to time.Time, fields []stri
 
 	var reader io.Reader = resp.Body
 	if resp.Header.Get("Content-Encoding") == "gzip" {
-		gr, err := gzip.NewReader(resp.Body)
-		if err != nil {
-			return nil, fmt.Errorf("cloudflare: gzip reader: %w", err)
+		gr, gzErr := gzip.NewReader(resp.Body)
+		if gzErr != nil {
+			return nil, fmt.Errorf("cloudflare: gzip reader: %w", gzErr)
 		}
 		defer gr.Close()
 		reader = gr

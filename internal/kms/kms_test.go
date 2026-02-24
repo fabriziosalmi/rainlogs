@@ -4,9 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fabriziosalmi/rainlogs/internal/kms"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/fabriziosalmi/rainlogs/internal/kms"
 )
 
 const testKey = "0000000000000000000000000000000000000000000000000000000000000000"

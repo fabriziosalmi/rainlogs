@@ -7,6 +7,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/labstack/echo/v4"
+
 	"github.com/fabriziosalmi/rainlogs/internal/api/middleware"
 	"github.com/fabriziosalmi/rainlogs/internal/auth"
 	"github.com/fabriziosalmi/rainlogs/internal/db"
@@ -14,10 +19,6 @@ import (
 	"github.com/fabriziosalmi/rainlogs/internal/models"
 	"github.com/fabriziosalmi/rainlogs/internal/queue"
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
-	"github.com/google/uuid"
-	"github.com/hibiken/asynq"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/labstack/echo/v4"
 )
 
 type Handlers struct {

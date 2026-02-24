@@ -10,6 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hibiken/asynq"
+	"go.uber.org/zap"
+
 	"github.com/fabriziosalmi/rainlogs/internal/config"
 	"github.com/fabriziosalmi/rainlogs/internal/db"
 	"github.com/fabriziosalmi/rainlogs/internal/kms"
@@ -18,37 +21,38 @@ import (
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
 	"github.com/fabriziosalmi/rainlogs/internal/worker"
 	"github.com/fabriziosalmi/rainlogs/pkg/logger"
-	"github.com/hibiken/asynq"
-	"go.uber.org/zap"
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "application error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	cfg, err := config.Load()
 	if err != nil {
-		cancel()
-		fmt.Printf("failed to load config: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	log := logger.Must(cfg.App.Env)
-	defer log.Sync() //nolint:errcheck // zap.Logger.Sync error is safe to ignore in main
+	appLog := logger.Must(cfg.App.Env)
+	defer appLog.Sync() //nolint:errcheck // zap.Logger.Sync error is safe to ignore
 
 	// 1. Init DB
 	database, err := db.Connect(ctx, cfg.Database)
 	if err != nil {
-		cancel()
-		log.Error("failed to connect to db", zap.Error(err))
-		return
+		return fmt.Errorf("failed to connect to db: %w", err)
 	}
 	defer database.Close()
 
 	// 2. Init KMS
 	kmsService, err := kms.NewKeyRing(cfg.KMS.Keys, cfg.KMS.ActiveKey)
 	if err != nil {
-		cancel()
-		log.Fatal("failed to init kms", zap.Error(err))
+		return fmt.Errorf("failed to init kms: %w", err)
 	}
 
 	// 3. Init Storage
@@ -63,8 +67,7 @@ func main() {
 		}
 		primary, err := storage.New(ctx, cfg.S3, primaryID)
 		if err != nil {
-			cancel()
-			log.Fatal("failed to init primary storage", zap.Error(err))
+			return fmt.Errorf("failed to init primary storage: %w", err)
 		}
 		backends = append(backends, primary)
 
@@ -77,24 +80,22 @@ func main() {
 			secondary, err := storage.New(ctx, cfg.S3Secondary, secondaryID)
 			if err != nil {
 				// Don't fail hard if secondary is bad, but warn log
-				log.Error("failed to init secondary storage", zap.Error(err))
+				appLog.Error("failed to init secondary storage", zap.Error(err))
 			} else {
 				backends = append(backends, secondary)
-				log.Info("enabled secondary storage failover", zap.String("provider", secondaryID))
+				appLog.Info("enabled secondary storage failover", zap.String("provider", secondaryID))
 			}
 		}
 
 	case "fs":
 		bst, err := storage.NewFSStore(cfg.Storage.FSRoot)
 		if err != nil {
-			cancel()
-			log.Fatal("failed to init fs storage", zap.Error(err))
+			return fmt.Errorf("failed to init fs storage: %w", err)
 		}
 		backends = append(backends, bst)
 
 	default:
-		cancel()
-		log.Fatal("unknown storage backend", zap.String("backend", cfg.Storage.Backend))
+		return fmt.Errorf("unknown storage backend: %s", cfg.Storage.Backend)
 	}
 
 	s3Client := storage.NewMultiStore(backends...)
@@ -113,18 +114,18 @@ func main() {
 	notifier := &notifications.ConsoleNotifier{}
 
 	// 6. Init Processors
-	pullProcessor := worker.NewLogPullProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, log, notifier)
-	securityProcessor := worker.NewSecurityEventsProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, log, notifier)
-	verifyProcessor := worker.NewLogVerifyProcessor(database, s3Client, log)
-	expireProcessor := worker.NewLogExpireProcessor(database, s3Client, log)
-	exportProcessor := worker.NewLogExportProcessor(database, kmsService, s3Client, log, notifier)
+	pullProcessor := worker.NewLogPullProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, appLog, notifier)
+	securityProcessor := worker.NewSecurityEventsProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, appLog, notifier)
+	verifyProcessor := worker.NewLogVerifyProcessor(database, s3Client, appLog)
+	expireProcessor := worker.NewLogExpireProcessor(database, s3Client, appLog)
+	exportProcessor := worker.NewLogExportProcessor(database, kmsService, s3Client, appLog, notifier)
 
 	// 6b. Init Instant Logs Daemon
-	instantLogsManager := worker.NewInstantLogsManager(database, kmsService, s3Client, cfg.Cloudflare, log, notifier)
+	instantLogsManager := worker.NewInstantLogsManager(database, kmsService, s3Client, cfg.Cloudflare, appLog, notifier)
 	go instantLogsManager.Start(ctx)
 
 	// 7. Start Scheduler
-	scheduler := worker.NewZoneScheduler(database, queueClient, log, cfg.Worker.SchedulerInterval)
+	scheduler := worker.NewZoneScheduler(database, queueClient, appLog, cfg.Worker.SchedulerInterval)
 	go scheduler.Run(ctx)
 
 	// 7. Start Worker Server
@@ -147,14 +148,22 @@ func main() {
 	mux.HandleFunc(queue.TypeLogExport, exportProcessor.ProcessTask)
 	mux.HandleFunc(queue.TypeLogExpire, expireProcessor.ProcessTask)
 
+	errChan := make(chan error, 1)
+
 	go func() {
 		if err := srv.Run(mux); err != nil {
-			log.Fatal("worker server stopped", zap.Error(err))
+			errChan <- fmt.Errorf("worker server failed: %w", err)
 		}
 	}()
 
 	// 8. Minimal HTTP health endpoint for Docker/K8s liveness probes.
 	inspector := asynq.NewInspector(redisOpt)
+	healthSrv := &http.Server{
+		Addr:         ":8081",
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
 	go func() {
 		http.HandleFunc("/health/worker", func(w http.ResponseWriter, _ *http.Request) {
 			type queueInfo struct {
@@ -181,24 +190,39 @@ func main() {
 			}
 			_ = json.NewEncoder(w).Encode(resp{Status: overall, Queues: queues})
 		})
-		healthSrv := &http.Server{
-			Addr:         ":8081",
-			ReadTimeout:  5 * time.Second,
-			WriteTimeout: 10 * time.Second,
-		}
+
 		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("worker health server stopped", zap.Error(err))
+			appLog.Error("worker health server stopped", zap.Error(err))
 		}
 	}()
 
-	log.Info("worker started", zap.String("env", cfg.App.Env))
+	appLog.Info("worker started", zap.String("env", cfg.App.Env))
 
 	// 9. Graceful Shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	log.Info("shutting down worker...")
+	select {
+	case <-quit:
+		appLog.Info("shutting down worker...")
+	case err := <-errChan:
+		appLog.Error("worker server crashed", zap.Error(err))
+		cancel() // Cancel context to stop other components
+		return err
+	}
+
+	// Cleanup happens here (defers) including logging sync
+	// Stop instant logs and scheduler via context cancel
 	cancel()
-	srv.Shutdown()
+
+	// Wait for cleanup if needed? `defer` handles DB/Queue Close.
+
+	// Graceful shutdown of HTTP server
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := healthSrv.Shutdown(shutdownCtx); err != nil {
+		appLog.Error("health server shutdown error", zap.Error(err))
+	}
+
+	return nil
 }

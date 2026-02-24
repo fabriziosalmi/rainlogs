@@ -12,6 +12,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hibiken/asynq"
+	"github.com/labstack/echo-contrib/echoprometheus"
+	"github.com/labstack/echo/v4"
+	echomw "github.com/labstack/echo/v4/middleware"
+	"go.uber.org/zap"
+
 	apimw "github.com/fabriziosalmi/rainlogs/internal/api/middleware"
 	"github.com/fabriziosalmi/rainlogs/internal/api/routes"
 	"github.com/fabriziosalmi/rainlogs/internal/config"
@@ -19,39 +25,38 @@ import (
 	"github.com/fabriziosalmi/rainlogs/internal/kms"
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
 	"github.com/fabriziosalmi/rainlogs/pkg/logger"
-	"github.com/hibiken/asynq"
-	"github.com/labstack/echo-contrib/echoprometheus"
-	"github.com/labstack/echo/v4"
-	echomw "github.com/labstack/echo/v4/middleware"
-	"go.uber.org/zap"
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "application error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	cfg, err := config.Load()
 	if err != nil {
-		cancel()
-		fmt.Printf("failed to load config: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	log := logger.Must(cfg.App.Env)
-	defer log.Sync() //nolint:errcheck // zap.Logger.Sync error is safe to ignore in main
+	appLog := logger.Must(cfg.App.Env)
+	defer appLog.Sync() //nolint:errcheck // zap.Logger.Sync error is safe to ignore
 
 	// 1. Init DB
 	database, err := db.Connect(ctx, cfg.Database)
 	if err != nil {
-		cancel()
-		log.Error("failed to connect to db", zap.Error(err))
-		return
+		return fmt.Errorf("failed to connect to db: %w", err)
 	}
 	defer database.Close()
 
 	// 2. Init KMS
 	kmsService, err := kms.NewKeyRing(cfg.KMS.Keys, cfg.KMS.ActiveKey)
 	if err != nil {
-		log.Fatal("failed to init kms", zap.Error(err))
+		return fmt.Errorf("failed to init kms: %w", err)
 	}
 
 	// 3. Init Storage (for log download)
@@ -62,10 +67,10 @@ func main() {
 	case "fs":
 		backend, err = storage.NewFSStore(cfg.Storage.FSRoot)
 	default:
-		log.Fatal("unknown storage backend", zap.String("backend", cfg.Storage.Backend))
+		return fmt.Errorf("unknown storage backend: %s", cfg.Storage.Backend)
 	}
 	if err != nil {
-		log.Fatal("failed to init storage", zap.String("backend", cfg.Storage.Backend), zap.Error(err))
+		return fmt.Errorf("failed to init storage: %w", err)
 	}
 	multiStore := storage.NewMultiStore(backend)
 
@@ -89,8 +94,8 @@ func main() {
 		LogStatus: true,
 		LogURI:    true,
 		LogMethod: true,
-		LogValuesFunc: func(c echo.Context, v echomw.RequestLoggerValues) error {
-			log.Info("http request",
+		LogValuesFunc: func(_ echo.Context, v echomw.RequestLoggerValues) error {
+			appLog.Info("http request",
 				zap.String("method", v.Method),
 				zap.String("uri", v.URI),
 				zap.Int("status", v.Status),
@@ -117,7 +122,7 @@ func main() {
 
 	jwtSecret := cfg.JWT.Secret
 	if jwtSecret == "" {
-		log.Fatal("JWT_SECRET is required")
+		return fmt.Errorf("JWT_SECRET is required")
 	}
 
 	// 6. Register Routes
@@ -172,23 +177,28 @@ func main() {
 	// 8. Start Server
 	go func() {
 		port := strconv.Itoa(cfg.App.Port)
-		log.Info("API server starting", zap.String("port", port), zap.String("env", cfg.App.Env))
+		appLog.Info("API server starting", zap.String("port", port), zap.String("env", cfg.App.Env))
 		if err := e.Start(":" + port); err != nil && err != http.ErrServerClosed {
-			log.Error("server stopped", zap.Error(err))
+			appLog.Error("server stopped", zap.Error(err))
 		}
 	}()
 
 	// 9. Graceful Shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	select {
+	case <-quit:
+		appLog.Info("shutting down API server...")
+	case <-ctx.Done():
+		appLog.Info("context cancelled, shutting down API server...")
+	}
 
-	log.Info("shutting down API server...")
-	cancel()
 	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
 
 	if err := e.Shutdown(ctxShutdown); err != nil {
-		log.Fatal("server forced to shutdown", zap.Error(err))
+		appLog.Error("server forced to shutdown", zap.Error(err))
 	}
+
+	return nil
 }

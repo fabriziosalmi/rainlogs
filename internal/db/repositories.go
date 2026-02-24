@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/fabriziosalmi/rainlogs/internal/models"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/fabriziosalmi/rainlogs/internal/models"
 )
 
 // ── CustomerRepository ────────────────────────────────────────────────────────
