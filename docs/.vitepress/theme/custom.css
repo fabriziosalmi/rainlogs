@@ -1,4 +1,5 @@
 /* Override VitePress background variables to let the gradient shine through */
+/* Force rebuild to ensure styles are applied */
 :root {
   --vp-c-bg: transparent !important;
   --vp-c-bg-alt: rgba(255, 255, 255, 0.5) !important; /* Slightly distinct for code/alt blocks */
