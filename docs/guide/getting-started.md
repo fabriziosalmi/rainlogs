@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- [Docker Engine]((https://docs.docker.com/get-docker/)) (v24+)
+- [Docker Engine](https://docs.docker.com/get-docker/) (v24+)
 - Docker Compose (v2+)
 - [Go 1.24+](https://go.dev/dl/) (optional, for source builds)
 
