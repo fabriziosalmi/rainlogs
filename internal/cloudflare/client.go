@@ -11,6 +11,7 @@ package cloudflare
 import (
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,6 +21,10 @@ import (
 
 	"github.com/fabriziosalmi/rainlogs/internal/config"
 )
+
+// ErrRateLimited is returned when Cloudflare responds with HTTP 429.
+// Workers should treat it as a retriable/transient error.
+var ErrRateLimited = errors.New("cloudflare: rate limited")
 
 const defaultBaseURL = "https://api.cloudflare.com/client/v4"
 
@@ -81,6 +86,10 @@ func (c *Client) PullLogs(ctx context.Context, from, to time.Time, fields []stri
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusTooManyRequests {
+		retryAfter := resp.Header.Get("Retry-After")
+		return nil, fmt.Errorf("%w (retry-after: %s)", ErrRateLimited, retryAfter)
+	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("cloudflare: HTTP %d: %s", resp.StatusCode, body)

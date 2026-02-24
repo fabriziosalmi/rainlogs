@@ -214,6 +214,11 @@ services:
       RAINLOGS_WORKER_LOG_RETENTION_DAYS: "395"
     volumes:
       - logs_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/health/worker"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
   # ──────────────────────────────────────────────────────────────────────
   # Asynqmon – real-time queue monitoring UI

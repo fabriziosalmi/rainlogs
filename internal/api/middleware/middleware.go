@@ -29,6 +29,10 @@ func APIKeyAuth(db *db.DB) echo.MiddlewareFunc {
 			}
 
 			apiKey := parts[1]
+			// Reject oversized keys before any DB interaction (prevents DoS via huge strings).
+			if len(apiKey) > 256 {
+				return echo.NewHTTPError(http.StatusUnauthorized, "invalid api key format")
+			}
 			prefix, err := auth.PrefixOf(apiKey)
 			if err != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid api key format")

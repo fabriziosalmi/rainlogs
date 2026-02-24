@@ -156,21 +156,22 @@ See the [full API reference](docs/guide/api-reference.md) for request/response s
 |--------|------|------|-------------|
 | `GET` | `/health` | Public | Health + dependency status |
 | `POST` | `/customers` | Public | Register a new customer |
-| `GET` | `/customers/:id` | Public | Get customer profile |
+| `GET` | `/api/v1/customers/:id` | API Key | Get own customer profile |
 | `POST` | `/api/v1/api-keys` | API Key | Issue a new API key |
 | `GET` | `/api/v1/api-keys` | API Key | List API keys |
 | `DELETE` | `/api/v1/api-keys/:key_id` | API Key | Revoke an API key |
 | `POST` | `/api/v1/zones` | API Key | Add a Cloudflare zone |
-| `GET` | `/api/v1/zones` | API Key | List zones |
+| `GET` | `/api/v1/zones` | API Key | List zones (includes `health` field) |
 | `DELETE` | `/api/v1/zones/:zone_id` | API Key | Remove a zone |
 | `POST` | `/api/v1/zones/:zone_id/pull` | API Key | Trigger immediate pull |
-| `GET` | `/api/v1/logs/jobs` | API Key | List log jobs (paginated) |
+| `GET` | `/api/v1/zones/:zone_id/logs` | API Key | List log jobs for a zone (paginated) |
+| `GET` | `/api/v1/logs/jobs` | API Key | List all log jobs (paginated) |
 | `GET` | `/api/v1/logs/jobs/:job_id` | API Key | Get single job + WORM hashes |
 | `GET` | `/api/v1/logs/jobs/:job_id/download` | API Key | Download NDJSON archive |
 
 ### Rate Limiting
 
-60 requests/second per IP, burst of 120. Returns `429` when exceeded.
+60 requests/second per IP, burst of 120. Returns `429 Too Many Requests` with `Retry-After` and `X-RateLimit-*` headers when exceeded.
 
 ### Error Responses
 
@@ -204,6 +205,32 @@ make help        # All available targets
 | **GDPR art. 17** | Retention-based automatic deletion of S3 objects + DB records |
 | **GDPR art. 32** | AES-256-GCM encryption at rest for Cloudflare API keys, bcrypt for API keys |
 | **EU data sovereignty** | Storage exclusively on EU-based providers (Garage, Hetzner, Contabo) |
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `API did not become healthy` | Postgres/Redis not ready | `docker compose logs postgres redis` |
+| `429 Too Many Requests` | Rate limit hit | Wait 1 s (see `Retry-After` header) or reduce request frequency |
+| Worker shows no jobs in Asynqmon | No zones registered | `POST /api/v1/zones` to add a zone |
+| `cloudflare: rate limited` | CF Logpull quota exceeded | Worker retries automatically with exponential backoff |
+| `job missing s3 key or hash` | Zone had zero logs | Expected — empty windows are skipped, no archive created |
+| `verified_at` is null | Job not yet verified | Verify task runs after pull; check worker logs |
+| Garage bucket missing | First-run init skipped | Run `make garage-init && make garage-create-bucket` |
+| `dial tcp: connection refused` on Redis | Redis not started | `docker compose up -d redis` |
+
+**Useful commands:**
+
+```bash
+docker compose logs -f api          # API structured JSON logs
+docker compose logs -f worker       # Worker structured JSON logs
+docker compose ps                   # Service health status
+curl http://localhost:8080/health   # API + dependency health
+curl http://localhost:8081/health/worker  # Worker + queue depth (internal port)
+open http://localhost:8383          # Asynqmon queue UI
+```
 
 ---
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/fabriziosalmi/rainlogs/internal/cloudflare"
@@ -18,6 +18,7 @@ import (
 	"github.com/fabriziosalmi/rainlogs/pkg/worm"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
+	"go.uber.org/zap"
 )
 
 type LogPullProcessor struct {
@@ -26,15 +27,17 @@ type LogPullProcessor struct {
 	storage *storage.MultiStore
 	queue   *asynq.Client
 	cfCfg   config.CloudflareConfig
+	log     *zap.Logger
 }
 
-func NewLogPullProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client, cfCfg config.CloudflareConfig) *LogPullProcessor {
+func NewLogPullProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client, cfCfg config.CloudflareConfig, log *zap.Logger) *LogPullProcessor {
 	return &LogPullProcessor{
 		db:      db,
 		kms:     kms,
 		storage: storage,
 		queue:   queue,
 		cfCfg:   cfCfg,
+		log:     log,
 	}
 }
 
@@ -84,6 +87,7 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 		job.Status = models.JobStatusDone
 		job.LogCount = 0
 		job.ByteCount = 0
+		// No S3 upload for empty windows – skip verify task (nothing to verify).
 		return p.db.LogJobs.Update(ctx, job)
 	}
 
@@ -127,7 +131,10 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 		return fmt.Errorf("job %s: create verify task: %w", job.ID, err)
 	}
 	if _, err := p.queue.EnqueueContext(ctx, verifyTask); err != nil {
-		log.Printf("ERROR: job %s: enqueue verify task: %v (WORM integrity check deferred)", job.ID, err)
+		p.log.Error("enqueue verify task failed – WORM integrity check deferred",
+			zap.String("job_id", job.ID.String()),
+			zap.Error(err),
+		)
 	}
 
 	return nil
@@ -144,12 +151,14 @@ func (p *LogPullProcessor) failJob(ctx context.Context, job *models.LogJob, err 
 type LogVerifyProcessor struct {
 	db      *db.DB
 	storage *storage.MultiStore
+	log     *zap.Logger
 }
 
-func NewLogVerifyProcessor(db *db.DB, storage *storage.MultiStore) *LogVerifyProcessor {
+func NewLogVerifyProcessor(db *db.DB, storage *storage.MultiStore, log *zap.Logger) *LogVerifyProcessor {
 	return &LogVerifyProcessor{
 		db:      db,
 		storage: storage,
+		log:     log,
 	}
 }
 
@@ -178,7 +187,17 @@ func (p *LogVerifyProcessor) ProcessTask(ctx context.Context, t *asynq.Task) err
 
 	hashStr := hex.EncodeToString(h.Sum(nil))
 	if hashStr != job.SHA256 {
+		p.log.Error("WORM integrity violation detected",
+			zap.String("job_id", job.ID.String()),
+			zap.String("expected_sha256", job.SHA256),
+			zap.String("computed_sha256", hashStr),
+		)
 		return fmt.Errorf("hash mismatch: expected %s, got %s", job.SHA256, hashStr)
+	}
+
+	// Stamp verified_at so operators can audit which jobs have been verified.
+	if err := p.db.LogJobs.MarkVerified(ctx, job.ID); err != nil {
+		p.log.Warn("mark verified failed", zap.String("job_id", job.ID.String()), zap.Error(err))
 	}
 
 	return nil
@@ -187,12 +206,14 @@ func (p *LogVerifyProcessor) ProcessTask(ctx context.Context, t *asynq.Task) err
 type LogExpireProcessor struct {
 	db      *db.DB
 	storage *storage.MultiStore
+	log     *zap.Logger
 }
 
-func NewLogExpireProcessor(db *db.DB, storage *storage.MultiStore) *LogExpireProcessor {
+func NewLogExpireProcessor(db *db.DB, storage *storage.MultiStore, log *zap.Logger) *LogExpireProcessor {
 	return &LogExpireProcessor{
 		db:      db,
 		storage: storage,
+		log:     log,
 	}
 }
 
@@ -210,12 +231,12 @@ func (p *LogExpireProcessor) ProcessTask(ctx context.Context, t *asynq.Task) err
 	for _, job := range jobs {
 		if job.S3Key != "" {
 			if err := p.storage.DeleteObject(ctx, job.S3Key); err != nil {
-				log.Printf("failed to delete s3 object %s: %v", job.S3Key, err)
+				p.log.Error("failed to delete s3 object", zap.String("s3_key", job.S3Key), zap.Error(err))
 				continue
 			}
 		}
 		if err := p.db.LogJobs.MarkExpired(ctx, job.ID); err != nil {
-			log.Printf("failed to mark job %s expired: %v", job.ID, err)
+			p.log.Error("failed to mark job expired", zap.String("job_id", job.ID.String()), zap.Error(err))
 		}
 	}
 
@@ -225,12 +246,14 @@ func (p *LogExpireProcessor) ProcessTask(ctx context.Context, t *asynq.Task) err
 type ZoneScheduler struct {
 	db    *db.DB
 	queue *asynq.Client
+	log   *zap.Logger
 }
 
-func NewZoneScheduler(db *db.DB, queue *asynq.Client) *ZoneScheduler {
+func NewZoneScheduler(db *db.DB, queue *asynq.Client, log *zap.Logger) *ZoneScheduler {
 	return &ZoneScheduler{
 		db:    db,
 		queue: queue,
+		log:   log,
 	}
 }
 
@@ -251,7 +274,7 @@ func (s *ZoneScheduler) Run(ctx context.Context) {
 func (s *ZoneScheduler) schedule(ctx context.Context) {
 	zones, err := s.db.Zones.ListDue(ctx)
 	if err != nil {
-		log.Printf("scheduler: list due zones: %v", err)
+		s.log.Error("scheduler: list due zones", zap.Error(err))
 		return
 	}
 
@@ -269,17 +292,25 @@ func (s *ZoneScheduler) schedule(ctx context.Context) {
 			PeriodEnd:   now,
 		})
 		if err != nil {
-			log.Printf("scheduler: create task for zone %s: %v", zone.ID, err)
+			s.log.Error("scheduler: create task", zap.String("zone_id", zone.ID.String()), zap.Error(err))
 			continue
 		}
 
-		if _, err := s.queue.EnqueueContext(ctx, task); err != nil {
-			log.Printf("scheduler: enqueue task for zone %s: %v", zone.ID, err)
+		// Use a deterministic task ID to prevent duplicate enqueues if
+		// UpdateLastPulled fails and the scheduler retries the same window.
+		taskID := fmt.Sprintf("pull-%s-%d", zone.ID, start.Unix())
+		_, err = s.queue.EnqueueContext(ctx, task, asynq.TaskID(taskID))
+		if err != nil {
+			if errors.Is(err, asynq.ErrTaskIDConflict) || errors.Is(err, asynq.ErrDuplicateTask) {
+				// Task already queued for this window – safe to skip.
+				continue
+			}
+			s.log.Error("scheduler: enqueue task", zap.String("zone_id", zone.ID.String()), zap.Error(err))
 			continue
 		}
 
 		if err := s.db.Zones.UpdateLastPulled(ctx, zone.ID, now); err != nil {
-			log.Printf("scheduler: update last pulled for zone %s: %v", zone.ID, err)
+			s.log.Error("scheduler: update last pulled", zap.String("zone_id", zone.ID.String()), zap.Error(err))
 		}
 	}
 }

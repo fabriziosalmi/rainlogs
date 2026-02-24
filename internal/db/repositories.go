@@ -233,24 +233,24 @@ func (r *LogJobRepository) Update(ctx context.Context, j *models.LogJob) error {
 	const q = `UPDATE log_jobs SET
 		status=$2, s3_key=$3, s3_provider=$4, sha256=$5,
 		chain_hash=$6, byte_count=$7, log_count=$8, err_msg=$9,
-		attempts=$10, updated_at=now()
+		attempts=$10, verified_at=$11, updated_at=now()
 		WHERE id=$1`
 	_, err := r.db.Exec(ctx, q,
 		j.ID, j.Status, j.S3Key, j.S3Provider, j.SHA256,
-		j.ChainHash, j.ByteCount, j.LogCount, j.ErrMsg, j.Attempts,
+		j.ChainHash, j.ByteCount, j.LogCount, j.ErrMsg, j.Attempts, j.VerifiedAt,
 	)
 	return err
 }
 
 func (r *LogJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.LogJob, error) {
 	const q = `SELECT id,zone_id,customer_id,period_start,period_end,status,
-			s3_key,s3_provider,sha256,chain_hash,byte_count,log_count,attempts,err_msg,created_at,updated_at
+			s3_key,s3_provider,sha256,chain_hash,byte_count,log_count,attempts,err_msg,verified_at,created_at,updated_at
 		FROM log_jobs WHERE id=$1`
 	j := &models.LogJob{}
 	err := r.db.QueryRow(ctx, q, id).Scan(
 		&j.ID, &j.ZoneID, &j.CustomerID, &j.PeriodStart, &j.PeriodEnd, &j.Status,
 		&j.S3Key, &j.S3Provider, &j.SHA256, &j.ChainHash, &j.ByteCount, &j.LogCount,
-		&j.Attempts, &j.ErrMsg, &j.CreatedAt, &j.UpdatedAt,
+		&j.Attempts, &j.ErrMsg, &j.VerifiedAt, &j.CreatedAt, &j.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("log_job get: %w", err)
@@ -260,7 +260,7 @@ func (r *LogJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.L
 
 func (r *LogJobRepository) ListByCustomer(ctx context.Context, customerID uuid.UUID, limit, offset int) ([]*models.LogJob, error) {
 	const q = `SELECT id,zone_id,customer_id,period_start,period_end,status,
-			s3_key,s3_provider,sha256,chain_hash,byte_count,log_count,attempts,err_msg,created_at,updated_at
+			s3_key,s3_provider,sha256,chain_hash,byte_count,log_count,attempts,err_msg,verified_at,created_at,updated_at
 		FROM log_jobs WHERE customer_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 	return r.scanJobs(ctx, q, customerID, limit, offset)
 }
@@ -268,7 +268,7 @@ func (r *LogJobRepository) ListByCustomer(ctx context.Context, customerID uuid.U
 // ListExpired returns done jobs older than retentionDays (GDPR art.17).
 func (r *LogJobRepository) ListExpired(ctx context.Context, customerID uuid.UUID, retentionDays int) ([]*models.LogJob, error) {
 	const q = `SELECT id,zone_id,customer_id,period_start,period_end,status,
-			s3_key,s3_provider,sha256,chain_hash,byte_count,log_count,attempts,err_msg,created_at,updated_at
+			s3_key,s3_provider,sha256,chain_hash,byte_count,log_count,attempts,err_msg,verified_at,created_at,updated_at
 		FROM log_jobs
 		WHERE customer_id=$1
 		  AND status=$2
@@ -276,11 +276,28 @@ func (r *LogJobRepository) ListExpired(ctx context.Context, customerID uuid.UUID
 	return r.scanJobs(ctx, q, customerID, models.JobStatusDone, retentionDays)
 }
 
+// ListByZone returns jobs for a specific zone owned by customerID.
+func (r *LogJobRepository) ListByZone(ctx context.Context, customerID, zoneID uuid.UUID, limit, offset int) ([]*models.LogJob, error) {
+	const q = `SELECT id,zone_id,customer_id,period_start,period_end,status,
+			s3_key,s3_provider,sha256,chain_hash,byte_count,log_count,attempts,err_msg,verified_at,created_at,updated_at
+		FROM log_jobs WHERE customer_id=$1 AND zone_id=$2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`
+	return r.scanJobs(ctx, q, customerID, zoneID, limit, offset)
+}
+
 // MarkExpired sets a job's status to expired after S3 object deletion.
 func (r *LogJobRepository) MarkExpired(ctx context.Context, id uuid.UUID) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE log_jobs SET status=$2, updated_at=now() WHERE id=$1`,
 		id, models.JobStatusExpired,
+	)
+	return err
+}
+
+// MarkVerified stamps verified_at = NOW() on a successfully integrity-checked job.
+func (r *LogJobRepository) MarkVerified(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE log_jobs SET verified_at=now(), updated_at=now() WHERE id=$1`,
+		id,
 	)
 	return err
 }
@@ -296,7 +313,7 @@ func (r *LogJobRepository) scanJobs(ctx context.Context, q string, args ...inter
 		j := &models.LogJob{}
 		if err := rows.Scan(&j.ID, &j.ZoneID, &j.CustomerID, &j.PeriodStart, &j.PeriodEnd,
 			&j.Status, &j.S3Key, &j.S3Provider, &j.SHA256, &j.ChainHash, &j.ByteCount,
-			&j.LogCount, &j.Attempts, &j.ErrMsg, &j.CreatedAt, &j.UpdatedAt); err != nil {
+			&j.LogCount, &j.Attempts, &j.ErrMsg, &j.VerifiedAt, &j.CreatedAt, &j.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, j)
@@ -320,13 +337,13 @@ func (r *LogObjectRepository) Create(ctx context.Context, o *models.LogObject) e
 
 func (r *LogJobRepository) GetLastJob(ctx context.Context, zoneID uuid.UUID) (*models.LogJob, error) {
 	const q = `SELECT id,zone_id,customer_id,period_start,period_end,status,
-			s3_key,s3_provider,sha256,chain_hash,byte_count,log_count,attempts,err_msg,created_at,updated_at
-		FROM log_jobs WHERE zone_id=$1 AND status='done' ORDER BY created_at DESC LIMIT 1`
+			s3_key,s3_provider,sha256,chain_hash,byte_count,log_count,attempts,err_msg,verified_at,created_at,updated_at
+		FROM log_jobs WHERE zone_id=$1 AND status='done' ORDER BY created_at DESC, id DESC LIMIT 1`
 	j := &models.LogJob{}
 	err := r.db.QueryRow(ctx, q, zoneID).Scan(
 		&j.ID, &j.ZoneID, &j.CustomerID, &j.PeriodStart, &j.PeriodEnd, &j.Status,
 		&j.S3Key, &j.S3Provider, &j.SHA256, &j.ChainHash, &j.ByteCount, &j.LogCount,
-		&j.Attempts, &j.ErrMsg, &j.CreatedAt, &j.UpdatedAt,
+		&j.Attempts, &j.ErrMsg, &j.VerifiedAt, &j.CreatedAt, &j.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err

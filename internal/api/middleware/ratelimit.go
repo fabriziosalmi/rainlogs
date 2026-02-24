@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -73,14 +74,21 @@ func (i *ipLimiter) get(ip string) *rate.Limiter {
 
 // RateLimit returns a middleware that limits requests per IP.
 // rps = requests per second, burst = burst capacity.
+// Sets RFC 6585 / RFC 7231 rate-limit response headers.
 func RateLimit(rps float64, burst int) echo.MiddlewareFunc {
 	limiter := newIPLimiter(rate.Limit(rps), burst)
+	limitStr := strconv.Itoa(burst)
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			ip := c.RealIP()
 			if !limiter.get(ip).Allow() {
+				h := c.Response().Header()
+				h.Set("Retry-After", "1")
+				h.Set("X-RateLimit-Limit", limitStr)
+				h.Set("X-RateLimit-Remaining", "0")
 				return echo.NewHTTPError(http.StatusTooManyRequests, "rate limit exceeded")
 			}
+			c.Response().Header().Set("X-RateLimit-Limit", limitStr)
 			return next(c)
 		}
 	}

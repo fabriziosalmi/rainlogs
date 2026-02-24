@@ -66,10 +66,11 @@ type LogJob struct {
 	ChainHash   string    `db:"chain_hash"   json:"chain_hash,omitempty"`
 	ByteCount   int64     `db:"byte_count"   json:"byte_count"`
 	LogCount    int64     `db:"log_count"    json:"log_count"`
-	Attempts    int       `db:"attempts"     json:"attempts"`
-	ErrMsg      string    `db:"err_msg"      json:"err_msg,omitempty"`
-	CreatedAt   time.Time `db:"created_at"   json:"created_at"`
-	UpdatedAt   time.Time `db:"updated_at"   json:"updated_at"`
+	Attempts   int        `db:"attempts"    json:"attempts"`
+	ErrMsg     string     `db:"err_msg"     json:"err_msg,omitempty"`
+	VerifiedAt *time.Time `db:"verified_at" json:"verified_at,omitempty"`
+	CreatedAt  time.Time  `db:"created_at"  json:"created_at"`
+	UpdatedAt  time.Time  `db:"updated_at"  json:"updated_at"`
 }
 
 // LogObject represents a stored S3 object.

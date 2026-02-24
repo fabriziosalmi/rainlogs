@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
-	"log"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,7 +15,9 @@ import (
 	"github.com/fabriziosalmi/rainlogs/internal/queue"
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
 	"github.com/fabriziosalmi/rainlogs/internal/worker"
+	"github.com/fabriziosalmi/rainlogs/pkg/logger"
 	"github.com/hibiken/asynq"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -22,13 +26,17 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		fmt.Printf("failed to load config: %v\n", err)
+		os.Exit(1)
 	}
+
+	log := logger.Must(cfg.App.Env)
+	defer log.Sync() //nolint:errcheck
 
 	// 1. Init DB
 	database, err := db.Connect(ctx, cfg.Database)
 	if err != nil {
-		log.Fatalf("failed to connect to db: %v", err)
+		log.Fatal("failed to connect to db", zap.Error(err))
 	}
 	defer database.Close()
 
@@ -38,7 +46,7 @@ func main() {
 	}
 	kmsService, err := kms.New(cfg.KMS.Key)
 	if err != nil {
-		log.Fatalf("failed to init kms: %v", err)
+		log.Fatal("failed to init kms", zap.Error(err))
 	}
 
 	// 3. Init Storage
@@ -51,11 +59,11 @@ func main() {
 	case "fs":
 		backend, storeErr = storage.NewFSStore(cfg.Storage.FSRoot)
 	default:
-		log.Fatalf("unknown storage backend: %s", cfg.Storage.Backend)
+		log.Fatal("unknown storage backend", zap.String("backend", cfg.Storage.Backend))
 	}
 
 	if storeErr != nil {
-		log.Fatalf("failed to init storage backend %s: %v", cfg.Storage.Backend, storeErr)
+		log.Fatal("failed to init storage", zap.String("backend", cfg.Storage.Backend), zap.Error(storeErr))
 	}
 
 	s3Client := storage.NewMultiStore(backend)
@@ -71,12 +79,12 @@ func main() {
 	defer queueClient.Close()
 
 	// 5. Init Processors
-	pullProcessor := worker.NewLogPullProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare)
-	verifyProcessor := worker.NewLogVerifyProcessor(database, s3Client)
-	expireProcessor := worker.NewLogExpireProcessor(database, s3Client)
+	pullProcessor := worker.NewLogPullProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, log)
+	verifyProcessor := worker.NewLogVerifyProcessor(database, s3Client, log)
+	expireProcessor := worker.NewLogExpireProcessor(database, s3Client, log)
 
 	// 6. Start Scheduler
-	scheduler := worker.NewZoneScheduler(database, queueClient)
+	scheduler := worker.NewZoneScheduler(database, queueClient, log)
 	go scheduler.Run(ctx)
 
 	// 7. Start Worker Server
@@ -99,15 +107,50 @@ func main() {
 
 	go func() {
 		if err := srv.Run(mux); err != nil {
-			log.Fatalf("could not run server: %v", err)
+			log.Fatal("worker server stopped", zap.Error(err))
 		}
 	}()
 
-	// 8. Graceful Shutdown
+	// 8. Minimal HTTP health endpoint for Docker/K8s liveness probes.
+	inspector := asynq.NewInspector(redisOpt)
+	go func() {
+		http.HandleFunc("/health/worker", func(w http.ResponseWriter, r *http.Request) {
+			type queueInfo struct {
+				Size int `json:"size"`
+			}
+			type resp struct {
+				Status string               `json:"status"`
+				Queues map[string]queueInfo `json:"queues"`
+			}
+			queues := map[string]queueInfo{}
+			overall := "ok"
+			for _, qName := range []string{queue.QueueCritical, queue.QueueDefault, queue.QueueLow} {
+				info, err := inspector.GetQueueInfo(qName)
+				if err != nil {
+					overall = "degraded"
+					queues[qName] = queueInfo{}
+					continue
+				}
+				queues[qName] = queueInfo{Size: info.Size}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if overall != "ok" {
+				w.WriteHeader(http.StatusServiceUnavailable)
+			}
+			_ = json.NewEncoder(w).Encode(resp{Status: overall, Queues: queues})
+		})
+		if err := http.ListenAndServe(":8081", nil); err != nil {
+			log.Error("worker health server stopped", zap.Error(err))
+		}
+	}()
+
+	log.Info("worker started", zap.String("env", cfg.App.Env))
+
+	// 9. Graceful Shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("shutting down worker...")
+	log.Info("shutting down worker...")
 	srv.Shutdown()
 }

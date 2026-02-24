@@ -100,9 +100,17 @@ func (h *Handlers) CreateCustomer(c echo.Context) error {
 }
 
 func (h *Handlers) GetCustomer(c echo.Context) error {
+	customerID, err := mustCustomerID(c)
+	if err != nil {
+		return err
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		return apiErr(c, http.StatusBadRequest, "invalid id")
+	}
+	if id != customerID {
+		return apiErr(c, http.StatusForbidden, "access denied")
 	}
 
 	customer, err := h.db.Customers.GetByID(c.Request().Context(), id)
@@ -114,6 +122,23 @@ func (h *Handlers) GetCustomer(c echo.Context) error {
 }
 
 // ── Zone Handlers ─────────────────────────────────────────────────────────────
+
+// zoneResponse adds a computed health field to the Zone model.
+type zoneResponse struct {
+	models.Zone
+	Health string `json:"health"`
+}
+
+// zoneHealth returns "ok", "stale", or "never_pulled" based on last pull time.
+func zoneHealth(z *models.Zone) string {
+	if z.LastPulledAt == nil {
+		return "never_pulled"
+	}
+	if time.Since(*z.LastPulledAt) > time.Duration(z.PullIntervalSecs)*2*time.Second {
+		return "stale"
+	}
+	return "ok"
+}
 
 type CreateZoneRequest struct {
 	ZoneID           string `json:"zone_id"            validate:"required"`
@@ -164,7 +189,11 @@ func (h *Handlers) ListZones(c echo.Context) error {
 		return apiErr(c, http.StatusInternalServerError, "failed to list zones")
 	}
 
-	return c.JSON(http.StatusOK, zones)
+	resp := make([]zoneResponse, len(zones))
+	for i, z := range zones {
+		resp[i] = zoneResponse{Zone: *z, Health: zoneHealth(z)}
+	}
+	return c.JSON(http.StatusOK, resp)
 }
 
 func (h *Handlers) DeleteZone(c echo.Context) error {
@@ -241,6 +270,48 @@ func (h *Handlers) TriggerPull(c echo.Context) error {
 		"task_id": info.ID,
 		"status":  info.State.String(),
 	})
+}
+
+// GetZoneLogs lists log jobs for a specific zone owned by the authenticated customer.
+func (h *Handlers) GetZoneLogs(c echo.Context) error {
+	customerID, err := mustCustomerID(c)
+	if err != nil {
+		return err
+	}
+
+	zoneID, err := uuid.Parse(c.Param("zone_id"))
+	if err != nil {
+		return apiErr(c, http.StatusBadRequest, "invalid zone_id")
+	}
+
+	// Verify zone ownership.
+	zone, err := h.db.Zones.GetByID(c.Request().Context(), zoneID)
+	if err != nil {
+		return apiErr(c, http.StatusNotFound, "zone not found")
+	}
+	if zone.CustomerID != customerID {
+		return apiErr(c, http.StatusForbidden, "access denied")
+	}
+
+	limit := 50
+	offset := 0
+	if l := c.QueryParam("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 500 {
+			limit = v
+		}
+	}
+	if o := c.QueryParam("offset"); o != "" {
+		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
+			offset = v
+		}
+	}
+
+	jobs, err := h.db.LogJobs.ListByZone(c.Request().Context(), customerID, zoneID, limit, offset)
+	if err != nil {
+		return apiErr(c, http.StatusInternalServerError, "failed to list zone log jobs")
+	}
+
+	return c.JSON(http.StatusOK, jobs)
 }
 
 // ── API Key Handlers ──────────────────────────────────────────────────────────
@@ -411,7 +482,7 @@ func (h *Handlers) DownloadLogs(c echo.Context) error {
 		job.PeriodEnd.UTC().Format("20060102T150405Z"),
 	)
 
-	c.Response().Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	c.Response().Header().Set("X-SHA256", job.SHA256)
 	c.Response().Header().Set("X-Chain-Hash", job.ChainHash)
 	return c.Blob(http.StatusOK, "application/x-ndjson", data)

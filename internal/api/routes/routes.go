@@ -13,18 +13,20 @@ import (
 func Register(e *echo.Echo, db *db.DB, kms *kms.Encryptor, jwtSecret string, queue *asynq.Client, store *storage.MultiStore) {
 	h := handlers.NewHandlers(db, kms, queue, store)
 
-	// Public
+	// Public — self-registration only; profile reads require auth (own-record only).
 	e.POST("/customers", h.CreateCustomer)
-	e.GET("/customers/:id", h.GetCustomer)
 
 	// API-key protected
 	api := e.Group("/api/v1")
 	api.Use(middleware.APIKeyAuth(db))
 
+	api.GET("/customers/:id", h.GetCustomer) // own record only
+
 	api.POST("/zones", h.CreateZone)
 	api.GET("/zones", h.ListZones)
 	api.DELETE("/zones/:zone_id", h.DeleteZone)
 	api.POST("/zones/:zone_id/pull", h.TriggerPull)
+	api.GET("/zones/:zone_id/logs", h.GetZoneLogs)
 
 	api.POST("/api-keys", h.CreateAPIKey)
 	api.GET("/api-keys", h.ListAPIKeys)
@@ -38,10 +40,13 @@ func Register(e *echo.Echo, db *db.DB, kms *kms.Encryptor, jwtSecret string, que
 	dash := e.Group("/dashboard")
 	dash.Use(middleware.JWTAuth(jwtSecret))
 
+	dash.GET("/customers/:id", h.GetCustomer) // own record only
+
 	dash.POST("/zones", h.CreateZone)
 	dash.GET("/zones", h.ListZones)
 	dash.DELETE("/zones/:zone_id", h.DeleteZone)
 	dash.POST("/zones/:zone_id/pull", h.TriggerPull)
+	dash.GET("/zones/:zone_id/logs", h.GetZoneLogs)
 
 	dash.POST("/api-keys", h.CreateAPIKey)
 	dash.GET("/api-keys", h.ListAPIKeys)
