@@ -80,7 +80,7 @@ Register a new customer (tenant). Each customer maps to one Cloudflare account.
 }
 ```
 
-> ⚠️ Note: `cf_api_key` is never returned in responses.
+> **Security Note:** `cf_api_key` is never returned in responses.
 
 ---
 
@@ -200,7 +200,7 @@ Generate a new API key for the authenticated customer.
 }
 ```
 
-> ⚠️ `api_key` is shown **exactly once**. Store it immediately — it cannot be recovered.
+> **Important:** The `api_key` is shown **exactly once**. Store it immediately — it cannot be recovered.
 
 #### `GET /api/v1/api-keys`
 

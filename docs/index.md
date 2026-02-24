@@ -2,33 +2,33 @@
 layout: home
 
 hero:
-  name: "Rainlogs"
-  text: "High-performance log management"
-  tagline: "Self-hosted, zero-config, EU-sovereign log storage and analysis."
+  name: "RainLogs"
+  text: "Cloudflare Log Archiving & Compliance"
+  tagline: "High-performance, EU-sovereign log retention for NIS2 requirements."
   image:
     src: /logo.svg
-    alt: Rainlogs Logo
+    alt: RainLogs Logo
   actions:
     - theme: brand
-      text: Get Started
+      text: Documentation
       link: /guide/getting-started
     - theme: alt
-      text: View on GitHub
+      text: GitHub
       link: https://github.com/fabriziosalmi/rainlogs
 
 features:
-  - title: Zero-Config Onboarding
-    details: Spin up the entire stack (API, Worker, PostgreSQL, Redis, Garage S3) with a single `docker compose up -d`.
-  - title: EU-Sovereign Storage
-    details: Built-in integration with Garage S3 for distributed, sovereign object storage.
-  - title: Secure by Design
-    details: AES-256-GCM encryption at rest via KMS (with key rotation) for sensitive data.
-  - title: Tamper-Proof
-    details: SHA-256 WORM hash chaining with `rainlogs-verify` tool for integrity audits.
-  - title: GDPR Compliant
-    details: Automated log expiry workers enforce retention policies (e.g., 395 days for NIS2).
-  - title: High Performance
-    details: Written in Go 1.24, utilizing Asynq for robust background job processing.
-  - title: Real-time Monitoring
-    details: Includes Asynqmon for real-time queue monitoring and task management.
+  - title: Infrastructure
+    details: Complete containerized stack including API, Worker, PostgreSQL, Redis, and Garage S3.
+  - title: Storage Sovereignty
+    details: Native integration with S3-compatible providers (Garage, Hetzner) strictly within EU jurisdiction.
+  - title: Encryption
+    details: AES-256-GCM encryption for credentials at rest with centralized key management.
+  - title: Verification
+    details: Cryptographically verifiable log integrity using SHA-256 hash chaining (WORM).
+  - title: GDPR Compliance
+    details: Automated lifecycle management enforcing strict data retention policies.
+  - title: Architecture
+    details: Built with Go 1.24, employing Hexagonal Architecture and CQRS for maintainability.
+  - title: Observability
+    details: Comprehensive metrics and structured logging via Prometheus/OpenTelemetry standards.
 ---

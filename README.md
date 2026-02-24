@@ -8,51 +8,47 @@
   </p>
 </div>
 
-RainLogs collects logs from Cloudflare zones and stores them in **EU-sovereign object storage** (Garage S3-compatible, Hetzner, Contabo) with **WORM integrity guarantees** suitable for NIS2 / D.Lgs. 138/2024 incident forensics.
+RainLogs provides automated log collection, cryptographic verification, and long-term retention for Cloudflare zones. It is designed for EU-sovereign environments, storing data in S3-compatible object storage (Garage, Hetzner, Contabo) with WORM (Write Once, Read Many) integrity guarantees to meet NIS2 and GDPR requirements.
 
-## Features
+## Core Capabilities
 
-### 🛡️ Compliance & Security
-- **WORM Storage**: Logs are hash-chained (SHA-256) to verify tampering.
-- **Verification Tool**: Built-in CLI `rainlogs-verify` to audit cryptographic chain integrity.
-- **EU Sovereignty**: Compatible with S3-compliant EU storage providers (Garage, Hetzner).
-- **GDPR**: Automated retention policies (e.g., 395 days).
-- **RBAC**: Role-Based Access Control with Admin/Viewer roles for secure team access.
+### Compliance & Security
+- **Data Integrity**: SHA-256 hash chaining ensures logs are tamper-evident. A CLI tool `rainlogs-verify` allows for independent auditing of the cryptographic chain.
+- **Data Sovereignty**: Fully compatible with EU-based S3-compliant storage providers, ensuring no data exits the legal jurisdiction.
+- **Retention Management**: Automated policies strictly enforce data retention periods (e.g., 395 days) to comply with GDPR storage limitation principles.
+- **Access Control**: Role-Based Access Control (RBAC) separates administrative privileges from read-only access.
 
-### 🚀 Performance & Reliability
-- **Smart Polling**: Adapts to Cloudflare plans (Logpull for Enterprise, Instant Logs for Business, GraphQL for Free/Pro).
-- **Bulk Export**: Efficiently export large volumes of logs to your own S3 bucket (Logpush replacement).
-- **Resilience**: Automatic retries, exponential backoff, circuit breakers.
-- **Storage Failover**: Support for primary and secondary S3 buckets for high availability.
-- **Quotas**: Configurable storage limits per customer to prevent abuse.
+### Infrastructure & Reliability
+- **Adaptive Collection**: Automatically selects the optimal retrieval method based on the Cloudflare plan level (Logpull, Instant Logs, or GraphQL).
+- **Scalable Export**: Replaces Logpush for bulk export of large datasets to private S3 buckets.
+- **Resilience**: Implements circuit breakers, exponential backoff, and automatic retries for robust operation against API failures.
+- **High Availability**: Supports primary and secondary S3 storage providers with automatic failover.
+- **Resource Management**: Configurable quotas per tenant to ensure fair resource allocation.
+- **Observability**: Prometheus metrics and structured logging for system health monitoring.
 
-### 🔔 Observability
-- **Notifications**: Alerts on critical failures (e.g., security event storms, improved instant log reliability).
-- **Health Checks**: Built-in endpoints for K8s/Docker probing.
+## Integration
 
-## Supported Plans
+RainLogs aligns collection strategies with available Cloudflare plan features:
 
-RainLogs adapts its collection strategy based on your Cloudflare plan:
-
-| Plan | Method | Data Type | Notes |
+| Plan | Method | Data Type | Retention |
 |---|---|---|---|
-| **Enterprise** | **Logpull API** | Full Access Logs | Historical backfill supported (7 days). |
-| **Business** | **Instant Logs** (WebSocket) | Full Access Logs | Real-time stream only. No historical backfill. |
-| **Pro / Free** | **Security Poller** (GraphQL) | Security Events (WAF) | Logs blocked requests only. No legitimate traffic logs. |
+| **Enterprise** | Logpull API | Full Access Logs | Historical backfill (7 days) + Real-time |
+| **Business** | Instant Logs | Full Access Logs | Real-time stream (WebSocket) |
+| **Pro / Free** | Security Events | Security Events (WAF) | Blocked requests only |
 
 [![CI](https://github.com/fabriziosalmi/rainlogs/actions/workflows/ci.yml/badge.svg)](https://github.com/fabriziosalmi/rainlogs/actions/workflows/ci.yml)
 [![Go 1.24](https://img.shields.io/badge/go-1.24-blue)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-## Why
+## Rationale
 
-| Problem | RainLogs solution |
-|---------|-------------------|
-| Cloudflare retains Logpull data for **7 days only** | Pulls every 5 min, archives for **13+ months** (configurable) |
-| Logpush (real-time export) requires **Enterprise** plan | Automates **Logpull** (Ent), **Instant Logs** (Biz), and **Security Events** (Free/Pro) |
-| Log tampering risk undermines forensic value | SHA-256 WORM chain + append-only hash linking |
-| US Cloud Act risk for EU data | Storage exclusively on **EU-based** providers; no US entity in chain |
-| NIS2 art. 21 – incident reporting within 24h | Structured NDJSON archive queryable by time window |
+| Challenge | RainLogs Implementation |
+|-----------|-------------------------|
+| **Limited Retention**: Cloudflare retains Logpull data for 7 days. | Archives logs for configurable periods (e.g., 13+ months) to meet legal mandates. |
+| **Plan Restrictions**: Real-time export (Logpush) is Enterprise-only. | Unifies Logpull, Instant Logs, and WAF polling into a single archive workflow for all plans. |
+| **Data Integrity**: Raw logs lack forensic verifiability. | Implements a continuous SHA-256 hash chain to detect unauthorized modification. |
+| **Data Residency**: US-based storage poses compliance risks. | Enforces storage strictly on user-defined EU providers. |
+| **Incident Reporting**: Compliance requires rapid data access. | Generates structured NDJSON archives indexable by time window. |
 
 ---
 
@@ -104,84 +100,69 @@ flowchart TD
 
 ---
 
-## Quick Start (Production)
+## Deployment
 
-### Option 1: Docker Compose (Single Node)
+### Docker Compose
 
-Includes HTTPS (Traefik), PostgreSQL, Redis, Garage S3, and Asynqmon dashboard.
+Deploys the complete stack including HTTPS termination, PostgreSQL, Redis, and S3 storage.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/rainlogs/main/install.sh | bash
 ```
 
-### Option 2: Kubernetes (K3s / K8s)
+### Kubernetes
 
-Deploy a production-ready stack with Ingress (nginx/Traefik), Autoscaling (HPA), and External Secrets (Vault, AWS, Azure).
+Production-ready manifests including Ingress, HPA, and External Secrets.
 
 ```bash
-# 1. Base deployment (ConfigMap, DB, Redis)
+# Infrastructure
 kubectl apply -f k8s/00-base.yaml
 kubectl apply -f k8s/10-dependencies.yaml
 
-# 2. Application (Migrations, API, Worker)
+# Application
 kubectl apply -f k8s/20-app.yaml
 
-# 3. Networking (Ingress)
-# Edit k8s/25-ingress.yaml to select nginx or Traefik
+# Ingress & Scaling
 kubectl apply -f k8s/25-ingress.yaml
-
-# 4. Scaling & Secrets (Optional)
-kubectl apply -f k8s/30-hpa.yaml              # Horizontal Pod Autoscaler
-kubectl apply -f k8s/35-external-secrets.yaml # External Secrets Operator
+kubectl apply -f k8s/30-hpa.yaml
 ```
 
 ---
 
-## Quick Start (Development)
+## Local Development
 
 ### Prerequisites
 
-- Go ≥ 1.24
-- Docker + Docker Compose v2
-- `make`
+- Go 1.24+
+- Docker & Docker Compose
+- Make
 
-### 1. Clone and configure
+### Setup
 
 ```bash
+# 1. Initialize repository
 git clone https://github.com/fabriziosalmi/rainlogs.git
 cd rainlogs
+
+# 2. Configure environment
 cp .env.example .env
-# Set required secrets:
-openssl rand -hex 32   # → RAINLOGS_JWT_SECRET
-openssl rand -hex 32   # → RAINLOGS_KMS_KEY
-```
+# Generate secrets
+openssl rand -hex 32   # RAINLOGS_JWT_SECRET
+openssl rand -hex 32   # RAINLOGS_KMS_KEY
 
-### 2. Start infrastructure
-
-```bash
+# 3. Start services
 make docker-up
-# Queue UI: http://localhost:8383
-```
 
-### 3. Initialise Garage (first run only)
-
-```bash
+# 4. Initialize storage
 make garage-init
 make garage-create-bucket
-# Copy the printed keys into .env
-```
 
-### 4. Run migrations
-
-```bash
+# 5. Apply schema
 make migrate-up
-```
 
-### 5. Start API and Worker
-
-```bash
-make dev-api     # → :8080
-make dev-worker  # → zone scheduler runs every 1 min (configurable)
+# 6. Run application
+make dev-api     # API Server (:8080)
+make dev-worker  # Worker Process
 ```
 
 ---
@@ -234,12 +215,11 @@ Key error codes: `ZONE_NOT_FOUND`, `JOB_NOT_FOUND`, `ACCESS_DENIED`, `INVALID_RE
 
 ---
 
-## Roadmap
+## Planned Features
 
-- [ ] Log search API (query by IP, ray ID, time range)
-- [ ] OpenAPI / Swagger docs
-- [ ] NIS2 incident report export (PDF summary of events in window)
-- [x] Asynq monitoring integration (Asynqmon)
+- **Log Search API**: Query capability by IP, Ray ID, and time range.
+- **Incident Reporting**: PDF export of events for NIS2 compliance documentation.
+- **OpenAPI Specification**: Full Swagger documentation for client generation.
 
 ---
 

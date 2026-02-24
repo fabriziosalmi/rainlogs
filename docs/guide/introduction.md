@@ -1,27 +1,24 @@
-# What is Rainlogs?
+# Introduction
 
-**Rainlogs** is a high-performance, self-hosted log management system designed for security, compliance, and ease of use. It is built with Go 1.24 and leverages a modern, robust stack including PostgreSQL, Redis, and Garage S3.
+**Rainlogs** is an enterprise-grade log management system engineered for security, data sovereignty, and regulatory compliance. Built with Go 1.24, it integrates seamlessly with modern infrastructure stacks including PostgreSQL, Redis, and S3-compatible object storage.
 
-## Core Philosophy
+## Core Principles
 
-Rainlogs was built with a few core principles in mind:
+1. **Automated Provisioning**: Deploys as a complete containerized stack, including distributed S3 storage, via standard orchestration tools.
+2. **Data Sovereignty**: Ensures strict data residency by utilizing EU-based storage providers (e.g., Garage, Hetzner, Contabo), avoiding US Cloud Act exposure.
+3. **Defense in Depth**: Protecting credentials with AES-256-GCM encryption at rest and enforcing strict Role-Based Access Control (RBAC).
+4. **Regulatory Compliance**: Automated retention policies and tamper-evident logging meet stringent requirements such as NIS2 (Article 21) and GDPR.
 
-1. **Zero-Config Onboarding**: The entire infrastructure, including distributed S3 storage, should spin up with a single command. No manual bucket creation, no complex key management.
-2. **EU-Sovereignty**: By integrating [Garage S3](https://garagehq.deuxfleurs.fr/), Rainlogs provides a sovereign, distributed object storage solution out of the box.
-3. **Security First**: Sensitive data, such as Cloudflare API keys, are encrypted at rest using AES-256-GCM via a built-in KMS service.
-4. **Compliance Ready**: Automated log expiry workers ensure that data retention policies (e.g., GDPR Art. 17, NIS2 requirements) are strictly enforced.
+## Capabilities
 
-## Key Features
+- **Automated Ingestion**: Adapts collection strategies to Cloudflare plan capabilities (Logpull, Instant Logs, Security Events).
+- **Storage Agnostic**: Native support for any S3-compatible backend, with built-in multi-provider failover.
+- **Bulk Export**: High-throughput export pipeline for moving large datasets to cold storage.
+- **Data Integrity**: Cryptographic verification using SHA-256 hash chaining (WORM) for forensic auditability.
+- **Access Control**: Granular permission management separating administrative and auditor roles.
+- **Resilience**: Robust job processing with circuit breakers, exponential backoff, and dead-letter queues.
+- **Observability**: Prometheus metrics and OpenTelemetry-compatible structured logging.
 
-- **Cloudflare Log Pulling**: Automatically fetch and store Cloudflare logs.
-- **S3 Storage**: Store logs in any S3-compatible storage (defaults to the bundled Garage S3).
-- **Bulk Export**: Efficiently move large log volumes to external S3 buckets.
-- **WORM Compliance**: Cryptographic chain verification for tamper-evident data integrity.
-- **RBAC**: Secure your deployment with Admin and Viewer roles.
-- **Background Processing**: Robust job queues powered by [Asynq](https://github.com/hibiken/asynq).
-- **Real-time Monitoring**: Built-in Asynqmon dashboard for queue visibility.
-- **Multi-provider Failover**: Support for S3 failover (e.g., Contabo + Hetzner).
+## Rationale
 
-## Why Rainlogs?
-
-If you need to retain logs for compliance (like the 395 days required by NIS2) but want to avoid the exorbitant costs of SaaS log management platforms, Rainlogs provides a self-hosted, highly efficient alternative that you fully control.
+Organizations operating under strict regulatory frameworks (NIS2, D.Lgs. 138/2024) require log retention periods that often exceed standard provider limits (e.g., Cloudflare's 7-day Logpull retention). Rainlogs provides a compliant, self-hosted archive solution that guarantees data integrity and sovereignty while eliminating the complexity of building custom ingestion pipelines.

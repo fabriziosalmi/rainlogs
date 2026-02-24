@@ -1,60 +1,57 @@
 # Getting Started
 
-This guide will walk you through setting up Rainlogs locally using Docker Compose.
-
 ## Prerequisites
 
-- [Docker](https://docs.docker.com/get-docker/)
-- [Docker Compose](https://docs.docker.com/compose/install/)
-- [Go 1.24+](https://go.dev/dl/) (if building from source)
+- [Docker Engine]((https://docs.docker.com/get-docker/)) (v24+)
+- Docker Compose (v2+)
+- [Go 1.24+](https://go.dev/dl/) (optional, for source builds)
 
-## Quick Start
+## Docker Compose Deployment
 
-The easiest way to get Rainlogs running is via the provided `docker-compose.yml`.
+The provided `docker-compose.yml` orchestrates the complete service mesh:
 
-1. **Clone the repository:**
+1. **Clone Repository**
 
    ```bash
    git clone https://github.com/fabriziosalmi/rainlogs.git
    cd rainlogs
    ```
 
-2. **Start the infrastructure:**
+2. **Initialize Services**
 
    ```bash
    docker compose up -d
    ```
 
-   This command will start:
-   - **PostgreSQL**: The primary database.
-   - **Redis**: Used by Asynq for background job queues.
-   - **Garage S3**: The distributed object storage.
-   - **Asynqmon**: The web UI for monitoring background jobs.
-   - **Rainlogs API**: The core Go application.
+   **Services Started:**
+   - `rainlogs-api`: Application server
+   - `rainlogs-worker`: Background log processor
+   - `garage`: S3-compatible object storage
+   - `postgres`: Primary data store
+   - `redis`: Job queue backend
+   - `asynqmon`: Queue monitoring UI
 
-3. **Verify the installation:**
+3. **Status Check**
 
-   The Rainlogs API should now be running on `http://localhost:8080`.
-   You can check the health endpoint:
+   Verify the API health endpoint:
 
    ```bash
    curl http://localhost:8080/health
+   # Expected: {"status":"ok", ...}
    ```
 
-   You should see a response indicating the service is healthy.
+## Automated Provisioning
 
-## Zero-Config Initialization
+RainLogs simplifies initial setup by automatically provisioning the necessary S3 resources. Upon startup:
 
-Rainlogs features a "Zero-Config" initialization process. When the API starts, it automatically:
+1. The API connects to the Garage management interface.
+2. Creates required buckets (default: `rainlogs-data`).
+3. Generates IAM credentials and stores S3 access keys.
+4. Updates application configuration dynamically.
 
-1. Connects to the Garage S3 instance.
-2. Creates the necessary S3 buckets (e.g., `rainlogs-data`).
-3. Generates S3 access keys if they don't exist.
-4. Configures the application to use these keys seamlessly.
-
-You do not need to manually configure S3 credentials or create buckets before starting the application.
+No manual S3 configuration is required for the default Garage deployment.
 
 ## Next Steps
 
-- Read about the [Architecture](./architecture.md) to understand how the components interact.
-- Check the [Configuration](./configuration.md) guide to customize your setup.
+- Review the [Architecture](./architecture.md) documentation.
+- Configure [External Storage](./configuration.md) providers.
