@@ -1,0 +1,49 @@
+openapi: 3.0.3
+info:
+  title: Rainlogs API
+  description: API for managing Cloudflare logs ingestion, retrieval, and compliance.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Development Server
+paths:
+  /auth/login:
+    post:
+      summary: Authenticate user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+  /zones:
+    get:
+      summary: List monitored zones
+      security:
+        - bearerAuth: []
+    post:
+      summary: Add a new zone
+      security:
+        - bearerAuth: []
+  /zones/{id}/logs:
+    get:
+      summary: Retrieve logs for a zone
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
