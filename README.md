@@ -63,6 +63,20 @@ RainLogs collects logs from Cloudflare zones via the **Logpull API** (available 
 | Object store | Garage / S3-compatible | EU-sovereign, partitioned by zone/date/hour |
 | Integrity | SHA-256 + hash chain | NIS2/forensic-grade tamper evidence |
 
+### Engineering Standards
+
+RainLogs is built with a focus on reliability, data integrity, and long-term maintainability, adhering to several engineering patterns:
+
+- **Idempotency (S3 Keys)**: Log archiving jobs utilize deterministic S3 keys based on time windows and zone IDs. Retrying a failed job is safe and will not produce duplicate data artifacts in storage, ensuring consistency even after network partitions.
+- **CQRS (Command Query Responsibility Segregation)**: The system architecture separates the `api` service (optimized for reads/queries) from the `worker` service (optimized for writes/processing), allowing independent scaling of ingestion and retrieval workloads.
+- **Exponential Backoff with Jitter**: The worker (via `asynq`) automatically handles transient failures (e.g., Cloudflare API rate limits) with randomized exponential backoff, preventing thundering herd issues during authorized outages.
+- **Hexagonal Architecture (Ports and Adapters)**: Core business logic is isolated from external concerns like the database (PostgreSQL), storage (S3/FS), and queue (Redis), allowing for easier testing and component swapping without modifying the domain logic.
+- **Graceful Degradation (Storage)**: The storage layer implements multi-provider failover strategies. If the primary S3 provider is unreachable, the system attempts to upload to secondary configured providers to ensure data durability.
+- **Infrastructure as Code (IaC)**: All infrastructure components, including the storage layer and application services, are defined in version-controlled Kubernetes manifests and Docker Compose configurations, eliminating configuration drift.
+- **Dependency Injection**: Components are explicitly wired at application startup (`main.go`), promoting loose coupling and making unit testing with mocks straightforward.
+- **WORM Storage Compliance**: Implements a cryptographic hash chain (SHA-256) linking each log archive to the previous one, creating a tamper-evident sequence suitable for NIS2 compliance and audit trails.
+- **Graceful Shutdown**: Services intercept termination signals (`SIGTERM`) to drain connections and complete in-flight jobs, preventing data loss or corruption during rolling updates.
+
 ---
 
 ## Quick start (Production)
@@ -163,15 +177,6 @@ All authenticated endpoints require `Authorization: Bearer rl_<token>`.
 | `GET` | `/v1/zones/:zone_id/jobs` | List log jobs (paginated) |
 | `POST` | `/v1/zones/:zone_id/pull` | Trigger an immediate pull |
 | `GET` | `/v1/jobs/:job_id/download` | Download log archive (NDJSON) |
-
----
-
-## Roadmap
-
-- [ ] Log search API (query by IP, ray ID, time range)
-- [ ] OpenAPI / Swagger docs
-- [ ] NIS2 incident report export (PDF summary of events in window)
-- [ ] Asynq monitoring integration with alerting
 
 ---
 
