@@ -19,7 +19,9 @@ features:
   - title: EU-Sovereign Storage
     details: Built-in integration with Garage S3 for distributed, sovereign object storage.
   - title: Secure by Design
-    details: AES-256-GCM encryption at rest via KMS for sensitive data like Cloudflare API keys.
+    details: AES-256-GCM encryption at rest via KMS (with key rotation) for sensitive data.
+  - title: Tamper-Proof
+    details: SHA-256 WORM hash chaining with `rainlogs-verify` tool for integrity audits.
   - title: GDPR Compliant
     details: Automated log expiry workers enforce retention policies (e.g., 395 days for NIS2).
   - title: High Performance

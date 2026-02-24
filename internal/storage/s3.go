@@ -140,8 +140,6 @@ func NewMultiStore(providers ...Backend) *MultiStore {
 
 // PutLogs uploads to the first available provider.
 // Returns the winning provider label alongside the object metadata.
-//
-//nolint:gocritic // tooManyResultsChecker: interface contract requires 6 return values
 func (m *MultiStore) PutLogs(ctx context.Context, customerID, zoneID uuid.UUID, from, to time.Time, raw []byte, logType string) (key, sha256hex, provider string, compressedBytes, logLines int64, err error) {
 	for _, p := range m.providers {
 		var k, h string
@@ -151,10 +149,12 @@ func (m *MultiStore) PutLogs(ctx context.Context, customerID, zoneID uuid.UUID, 
 			return k, h, p.Provider(), cb, ll, nil
 		}
 	}
+	// All providers failed
 	return "", "", "", 0, 0, fmt.Errorf("storage: all providers failed, last error: %w", err)
 }
 
 // GetLogs fetches from the first provider that has the object.
+// It iterates providers in order.
 func (m *MultiStore) GetLogs(ctx context.Context, key string) ([]byte, error) {
 	var lastErr error
 	for _, p := range m.providers {
@@ -162,18 +162,27 @@ func (m *MultiStore) GetLogs(ctx context.Context, key string) ([]byte, error) {
 		if err == nil {
 			return data, nil
 		}
+		// If object not found, continue to next provider.
+		// If transient error, also continue.
 		lastErr = err
 	}
-	return nil, fmt.Errorf("storage: all providers failed: %w", lastErr)
+	return nil, fmt.Errorf("storage: all providers failed or object not found: %w", lastErr)
 }
 
-// DeleteObject deletes from all providers (best-effort).
+// DeleteObject deletes from all providers (best-effort/consistency).
+// We must try to delete from all configured backends to ensure no data residue.
 func (m *MultiStore) DeleteObject(ctx context.Context, key string) error {
 	var lastErr error
+	successCount := 0
 	for _, p := range m.providers {
 		if err := p.DeleteObject(ctx, key); err != nil {
 			lastErr = err
+		} else {
+			successCount++
 		}
 	}
-	return lastErr
+	if successCount == 0 && len(m.providers) > 0 {
+		return lastErr
+	}
+	return nil
 }

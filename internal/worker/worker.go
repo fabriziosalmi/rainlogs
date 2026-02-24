@@ -14,6 +14,7 @@ import (
 	"github.com/fabriziosalmi/rainlogs/internal/db"
 	"github.com/fabriziosalmi/rainlogs/internal/kms"
 	"github.com/fabriziosalmi/rainlogs/internal/models"
+	"github.com/fabriziosalmi/rainlogs/internal/notifications"
 	"github.com/fabriziosalmi/rainlogs/internal/queue"
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
 	"github.com/fabriziosalmi/rainlogs/pkg/worm"
@@ -24,28 +25,30 @@ import (
 )
 
 type LogPullProcessor struct {
-	db      *db.DB
-	kms     *kms.Encryptor
-	storage *storage.MultiStore
-	queue   *asynq.Client
-	cfCfg   config.CloudflareConfig
-	log     *zap.Logger
-	limiter *rate.Limiter
+	db       *db.DB
+	kms      *kms.Encryptor
+	storage  *storage.MultiStore
+	queue    *asynq.Client
+	cfCfg    config.CloudflareConfig
+	log      *zap.Logger
+	limiter  *rate.Limiter
+	notifier notifications.NotificationService
 }
 
-func NewLogPullProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client, cfCfg config.CloudflareConfig, log *zap.Logger) *LogPullProcessor {
+func NewLogPullProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client, cfCfg config.CloudflareConfig, log *zap.Logger, notifier notifications.NotificationService) *LogPullProcessor {
 	var limiter *rate.Limiter
 	if cfCfg.RateLimit > 0 {
 		limiter = rate.NewLimiter(rate.Limit(cfCfg.RateLimit), 1)
 	}
 	return &LogPullProcessor{
-		db:      db,
-		kms:     kms,
-		storage: storage,
-		queue:   queue,
-		cfCfg:   cfCfg,
-		log:     log,
-		limiter: limiter,
+		db:       db,
+		kms:      kms,
+		storage:  storage,
+		queue:    queue,
+		cfCfg:    cfCfg,
+		log:      log,
+		limiter:  limiter,
+		notifier: notifier,
 	}
 }
 
@@ -77,6 +80,21 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 	if err != nil {
 		return p.failJob(ctx, job, fmt.Errorf("get zone: %w", err))
 	}
+
+	// 2a. Check Quota
+	if customer.QuotaBytes != -1 {
+		usage, err := p.db.LogJobs.GetCurrentUsage(ctx, customer.ID)
+		if err != nil {
+			return p.failJob(ctx, job, fmt.Errorf("check quota: %w", err))
+		}
+		if usage >= customer.QuotaBytes {
+			msg := fmt.Sprintf("Quota exceeded for customer %s (Usage: %d, Limit: %d)", customer.Name, usage, customer.QuotaBytes)
+			p.notifier.SendAlert(ctx, customer.ID.String(), "warning", msg)
+			return p.failJob(ctx, job, fmt.Errorf("quota exceeded"))
+		}
+	}
+
+	//
 
 	// 3. Decrypt CF API Key
 	cfKey, err := p.kms.Decrypt(customer.CFAPIKeyEnc)
@@ -288,12 +306,19 @@ func (s *ZoneScheduler) Run(ctx context.Context) {
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
+	// Initial run to clear potentially expired logs
+	s.scheduleExpiry(ctx)
+	expiryTicker := time.NewTicker(24 * time.Hour)
+	defer expiryTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			s.schedule(ctx)
+		case <-expiryTicker.C:
+			s.scheduleExpiry(ctx)
 		}
 	}
 }
@@ -380,6 +405,42 @@ func (s *ZoneScheduler) schedule(ctx context.Context) {
 
 		if err := s.db.Zones.UpdateLastPulled(ctx, zone.ID, now); err != nil {
 			s.log.Error("scheduler: update last pulled", zap.String("zone_id", zone.ID.String()), zap.Error(err))
+		}
+	}
+}
+
+// scheduleExpiry enqueues a log expiry task for each customer.
+// This ensures GDPR Art. 17 compliance by pruning logs older than retention period.
+func (s *ZoneScheduler) scheduleExpiry(ctx context.Context) {
+	customers, err := s.db.Customers.List(ctx)
+	if err != nil {
+		s.log.Error("scheduler: list customers for expiry", zap.Error(err))
+		return
+	}
+
+	for _, c := range customers {
+		if c.DeletedAt != nil {
+			continue
+		}
+
+		payload := queue.LogExpirePayload{
+			CustomerID:    c.ID,
+			RetentionDays: c.RetentionDays,
+		}
+		t, err := queue.NewLogExpireTask(payload)
+		if err != nil {
+			s.log.Error("scheduler: create log expire task", zap.String("customer_id", c.ID.String()), zap.Error(err))
+			continue
+		}
+
+		// Use task ID to prevent duplicate expiry jobs for the same day
+		taskID := fmt.Sprintf("expire-%s-%s", c.ID, time.Now().UTC().Format("2006-01-02"))
+		_, err = s.queue.EnqueueContext(ctx, t, asynq.TaskID(taskID))
+		if err != nil {
+			if errors.Is(err, asynq.ErrTaskIDConflict) || errors.Is(err, asynq.ErrDuplicateTask) {
+				continue
+			}
+			s.log.Error("scheduler: enqueue expiry task", zap.String("customer_id", c.ID.String()), zap.Error(err))
 		}
 	}
 }

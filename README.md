@@ -4,6 +4,24 @@
 
 RainLogs collects logs from Cloudflare zones and stores them in **EU-sovereign object storage** (Garage S3-compatible, Hetzner, Contabo) with **WORM integrity guarantees** suitable for NIS2 / D.Lgs. 138/2024 incident forensics.
 
+## Features
+
+### 🛡️ Compliance & Security
+- **WORM Storage**: Logs are hash-chained (SHA-256) to detect tampering.
+- **Verification Tool**: Built-in CLI `rainlogs-verify` to audit the cryptographic chain integrity.
+- **EU Sovereignty**: Compatible with S3-compliant EU storage providers (Garage, Hetzner).
+- **GDPR**: Automated retention policies (e.g., 395 days).
+
+### 🚀 Performance & Reliability
+- **Smart Polling**: Adapts to Cloudflare plans (Logpull for Enterprise, Instant Logs for Business, GraphQL for Free/Pro).
+- **Resilience**: Automatic retries, exponential backoff, and circuit breakers.
+- **Storage Failover**: Support for primary and secondary S3 buckets for high availability.
+- **Quotas**: Configurable storage limits per customer to prevent abuse.
+
+### 🔔 Observability
+- **Notifications**: Alerts on critical failures (e.g., security event storms, improved instant log reliability).
+- **Health Checks**: Built-in endpoints for K8s/Docker probing.
+
 ## Supported Plans
 
 RainLogs adapts its collection strategy based on your Cloudflare plan:
@@ -23,7 +41,7 @@ RainLogs adapts its collection strategy based on your Cloudflare plan:
 | Problem | RainLogs solution |
 |---------|-------------------|
 | Cloudflare retains Logpull data for **7 days only** | Pulls every 5 min, archives for **13+ months** (configurable) |
-| Logpush (real-time export) requires **Enterprise** plan | Automates **Logpull** (Enterprise) |
+| Logpush (real-time export) requires **Enterprise** plan | Automates **Logpull** (Ent), **Instant Logs** (Biz), and **Security Events** (Free/Pro) |
 | Log tampering risk undermines forensic value | SHA-256 WORM chain + append-only hash linking |
 | US Cloud Act risk for EU data | Storage exclusively on **EU-based** providers; no US entity in chain |
 | NIS2 art. 21 – incident reporting within 24h | Structured NDJSON archive queryable by time window |
@@ -33,19 +51,19 @@ RainLogs adapts its collection strategy based on your Cloudflare plan:
 ## Architecture
 
 ```
-                      ┌──────────────────┐
-                      │  Cloudflare API  │
-                      │  (Logpull API)   │
-                      └────────┬─────────┘
-                               │ HTTPS (zones/*/logs/received)
-                               ▼
-                    ┌─────────────────────┐
-                    │   rainlogs-worker   │◄── Redis (asynq)
-                    │  (zone scheduler   │
-                    │   + task processor) │
-                    └──────────┬──────────┘
-                               │ compress + SHA-256 + WORM chain
-                               ▼
+                      ┌──────────────────────┐
+                      │      Cloudflare      │
+                      │ (Logpull/Instant/WAF)│
+                      └──────────┬───────────┘
+                                 │ HTTPS / WSS
+                                 ▼
+                      ┌─────────────────────┐
+                      │   rainlogs-worker   │◄── Redis (asynq)
+                      │  (zone scheduler    │
+                      │   + task processor) │
+                      └──────────┬──────────┘
+                                 │ compress + SHA-256 + WORM chain
+                                 ▼
               ┌─────────────────────────────────┐
               │  S3-compatible EU object store  │
               │  (Garage dev / Hetzner prod)    │

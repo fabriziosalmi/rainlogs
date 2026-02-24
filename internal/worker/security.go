@@ -12,31 +12,41 @@ import (
 	"github.com/fabriziosalmi/rainlogs/internal/db"
 	"github.com/fabriziosalmi/rainlogs/internal/kms"
 	"github.com/fabriziosalmi/rainlogs/internal/models"
+	"github.com/fabriziosalmi/rainlogs/internal/notifications"
 	"github.com/fabriziosalmi/rainlogs/internal/queue"
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
 	"github.com/fabriziosalmi/rainlogs/pkg/worm"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 )
 
 type SecurityEventsProcessor struct {
-	db      *db.DB
-	kms     *kms.Encryptor
-	storage *storage.MultiStore
-	queue   *asynq.Client
-	cfCfg   config.CloudflareConfig
-	log     *zap.Logger
+	db       *db.DB
+	kms      *kms.Encryptor
+	storage  *storage.MultiStore
+	queue    *asynq.Client
+	cfCfg    config.CloudflareConfig
+	log      *zap.Logger
+	limiter  *rate.Limiter
+	notifier notifications.NotificationService
 }
 
-func NewSecurityEventsProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client, cfCfg config.CloudflareConfig, log *zap.Logger) *SecurityEventsProcessor {
+func NewSecurityEventsProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client, cfCfg config.CloudflareConfig, log *zap.Logger, notifier notifications.NotificationService) *SecurityEventsProcessor {
+	var limiter *rate.Limiter
+	if cfCfg.RateLimit > 0 {
+		limiter = rate.NewLimiter(rate.Limit(cfCfg.RateLimit), 1)
+	}
 	return &SecurityEventsProcessor{
-		db:      db,
-		kms:     kms,
-		storage: storage,
-		queue:   queue,
-		cfCfg:   cfCfg,
-		log:     log,
+		db:       db,
+		kms:      kms,
+		storage:  storage,
+		queue:    queue,
+		cfCfg:    cfCfg,
+		log:      log,
+		limiter:  limiter,
+		notifier: notifier,
 	}
 }
 
@@ -46,8 +56,7 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 		return fmt.Errorf("parse payload: %w", err)
 	}
 
-	// 1. Create LogJob (reuse LogJob table, maybe add type field later, for now we assume it's just a job)
-	// Ideally we should distinguish job type in DB, but for MVP reuse is ok as ID is unique.
+	// 1. Create LogJob (reuse LogJob table)
 	job := &models.LogJob{
 		ID:          uuid.New(),
 		ZoneID:      payload.ZoneID,
@@ -70,17 +79,46 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 		return p.failJob(ctx, job, fmt.Errorf("get zone: %w", err))
 	}
 
+	// 2a. Check Quota
+	if customer.QuotaBytes != -1 {
+		usage, err := p.db.LogJobs.GetCurrentUsage(ctx, customer.ID)
+		if err != nil {
+			return p.failJob(ctx, job, fmt.Errorf("check quota: %w", err))
+		}
+		if usage >= customer.QuotaBytes {
+			msg := fmt.Sprintf("Quota exceeded for customer %s (Usage: %d, Limit: %d)", customer.Name, usage, customer.QuotaBytes)
+			p.notifier.SendAlert(ctx, customer.ID.String(), "warning", msg)
+			return p.failJob(ctx, job, fmt.Errorf("quota exceeded"))
+		}
+	}
+
 	// 3. Decrypt CF API Key
 	cfKey, err := p.kms.Decrypt(customer.CFAPIKeyEnc)
 	if err != nil {
 		return p.failJob(ctx, job, fmt.Errorf("decrypt cf key: %w", err))
 	}
 
-	// 4. Fetch Security Events
-	cfClient := cloudflare.NewGraphQLClient(cfKey) // Or use existing client if extended? No, separate client for now.
+	// 4. Rate Limiter
+	if p.limiter != nil {
+		if err := p.limiter.Wait(ctx); err != nil {
+			return p.failJob(ctx, job, fmt.Errorf("rate limiter: %w", err))
+		}
+	}
+
+	// 5. Fetch Security Events
+	cfClient := cloudflare.NewGraphQLClient(cfKey)
 	events, err := cfClient.GetSecurityEvents(ctx, zone.ZoneID, payload.PeriodStart, payload.PeriodEnd)
 	if err != nil {
 		return p.failJob(ctx, job, fmt.Errorf("fetch security events: %w", err))
+	}
+
+	if len(events) >= 1000 {
+		p.log.Warn("security events limit reached (1000), potential data loss - consider smaller interval",
+			zap.String("zone", zone.Name),
+			zap.Time("start", payload.PeriodStart),
+			zap.Time("end", payload.PeriodEnd),
+		)
+		p.notifier.SendAlert(ctx, zone.ID.String(), "warning", fmt.Sprintf("Security events limit reached (1000) for zone %s. Potential data loss.", zone.Name))
 	}
 
 	if len(events) == 0 {
@@ -90,7 +128,7 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 		return p.db.LogJobs.Update(ctx, job)
 	}
 
-	// 5. Convert to NDJSON
+	// 6. Convert to NDJSON
 	var buffer []byte
 	for _, event := range events {
 		line, err := json.Marshal(event)
@@ -102,7 +140,7 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 		buffer = append(buffer, '\n')
 	}
 
-	// 6. Hash & WORM (Same logic as LogPull)
+	// 7. Hash & WORM (Same logic as LogPull)
 	h := sha256.New()
 	h.Write(buffer)
 	hashStr := hex.EncodeToString(h.Sum(nil))
@@ -114,7 +152,7 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 	}
 	chainHash := worm.ChainHash(prevChainHash, hashStr, job.ID.String())
 
-	// 7. Upload to S3
+	// 8. Upload to S3
 	// Note: PutLogs assumes "access logs" folder structure? Or generic?
 	// It uses `customerID/zoneID/year/month/day/...`. This is fine.
 	// Maybe we should verify prefix in storage/s3.go?
@@ -123,8 +161,9 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 		return p.failJob(ctx, job, fmt.Errorf("s3 upload: %w", err))
 	}
 
-	// 8. Update Job
+	// 9. Update Job
 	job.Status = models.JobStatusDone
+
 	job.S3Key = s3Key
 	job.S3Provider = provider
 	job.SHA256 = s3HashStr
@@ -142,6 +181,10 @@ func (p *SecurityEventsProcessor) failJob(ctx context.Context, job *models.LogJo
 	job.Attempts++
 	job.Status = models.JobStatusFailed
 	job.ErrMsg = err.Error()
+
+	// Send alert for failed job
+	p.notifier.SendAlert(ctx, job.ZoneID.String(), "error", fmt.Sprintf("Security events job failed for zone %s: %v", job.ZoneID, err))
+
 	_ = p.db.LogJobs.Update(ctx, job)
 	return err
 }

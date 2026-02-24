@@ -12,6 +12,7 @@ import (
 const (
 	TypeLogPull      = "log:pull"
 	TypeSecurityPoll = "security:poll"
+	TypeInstantLogs  = "log:instant" // Streaming job (Business)
 	TypeLogVerify    = "log:verify"
 	TypeLogExpire    = "log:expire"
 
@@ -47,6 +48,13 @@ type LogExpirePayload struct {
 	RetentionDays int       `json:"retention_days"`
 }
 
+// InstantLogsPayload is the task payload for TypeInstantLogs.
+type InstantLogsPayload struct {
+	ZoneID     uuid.UUID `json:"zone_id"`
+	CustomerID uuid.UUID `json:"customer_id"`
+	Duration   string    `json:"duration"` // e.g. "5m"
+}
+
 func NewLogPullTask(p LogPullPayload) (*asynq.Task, error) {
 	b, err := json.Marshal(p)
 	if err != nil {
@@ -62,6 +70,15 @@ func NewSecurityPollTask(p SecurityPollPayload) (*asynq.Task, error) {
 	}
 	// Use QueueDefault or separate queue? Default is fine.
 	return asynq.NewTask(TypeSecurityPoll, b, asynq.Queue(QueueDefault)), nil
+}
+
+// NewInstantLogsTask creates an InstantLogs streaming task.
+func NewInstantLogsTask(p InstantLogsPayload) (*asynq.Task, error) {
+	b, err := json.Marshal(p)
+	if err != nil {
+		return nil, fmt.Errorf("marshal InstantLogs: %w", err)
+	}
+	return asynq.NewTask(TypeInstantLogs, b, asynq.Queue(QueueDefault), asynq.Timeout(10*time.Minute)), nil
 }
 
 func NewLogVerifyTask(p LogVerifyPayload) (*asynq.Task, error) {
@@ -88,6 +105,13 @@ func ParseLogPullPayload(t *asynq.Task) (LogPullPayload, error) {
 
 func ParseSecurityPollPayload(t *asynq.Task) (SecurityPollPayload, error) {
 	var p SecurityPollPayload
+	err := json.Unmarshal(t.Payload(), &p)
+	return p, err
+}
+
+// ParseInstantLogsPayload decodes the payload.
+func ParseInstantLogsPayload(t *asynq.Task) (InstantLogsPayload, error) {
+	var p InstantLogsPayload
 	err := json.Unmarshal(t.Payload(), &p)
 	return p, err
 }

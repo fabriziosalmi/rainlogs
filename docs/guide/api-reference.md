@@ -107,6 +107,7 @@ Register a Cloudflare zone for log archival.
 {
   "zone_id": "d41d8cd98f00b204e9800998ecf8427e",
   "name": "example.com",
+  "plan": "enterprise",
   "pull_interval_secs": 300
 }
 ```
@@ -115,6 +116,7 @@ Register a Cloudflare zone for log archival.
 |---|---|---|---|
 | `zone_id` | string | required | Cloudflare Zone ID |
 | `name` | string | required | Human-readable zone name |
+| `plan` | string | optional | One of `enterprise` (default), `business`, `free_pro` |
 | `pull_interval_secs` | int | min 300 | Pull frequency in seconds |
 
 **Response `201 Created`**
@@ -131,6 +133,7 @@ List all zones for the authenticated customer.
     "customer_id": "...",
     "zone_id": "d41d8cd9...",
     "name": "example.com",
+    "plan": "enterprise",
     "pull_interval_secs": 300,
     "last_pulled_at": "2024-01-15T10:25:00Z",
     "active": true,
@@ -138,6 +141,22 @@ List all zones for the authenticated customer.
   }
 ]
 ```
+
+#### `PATCH /api/v1/zones/:zone_id`
+
+Update zone configuration. All fields are optional.
+
+**Request body**
+```json
+{
+  "name": "New Name",
+  "plan": "business",
+  "pull_interval_secs": 600,
+  "active": true
+}
+```
+
+**Response `200 OK`**
 
 #### `DELETE /api/v1/zones/:zone_id`
 

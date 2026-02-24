@@ -208,9 +208,10 @@ func zoneHealth(z *models.Zone) string {
 }
 
 type CreateZoneRequest struct {
-	ZoneID           string `json:"zone_id"            validate:"required"`
-	Name             string `json:"name"               validate:"required"`
-	PullIntervalSecs int    `json:"pull_interval_secs" validate:"required,min=300"`
+	ZoneID           string          `json:"zone_id"            validate:"required"`
+	Name             string          `json:"name"               validate:"required"`
+	Plan             models.PlanType `json:"plan"`
+	PullIntervalSecs int             `json:"pull_interval_secs" validate:"required,min=300"`
 }
 
 func (h *Handlers) CreateZone(c echo.Context) error {
@@ -223,9 +224,23 @@ func (h *Handlers) CreateZone(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return apiErr(c, http.StatusBadRequest, "invalid request body", "INVALID_REQUEST")
 	}
+
+	// Default to enterprise for backward compatibility if not specified
+	if req.Plan == "" {
+		req.Plan = models.PlanEnterprise
+	}
+
 	const maxPullIntervalSecs = 518400 // 6 days – must stay below CF's 7-day log retention
 	if req.ZoneID == "" || req.Name == "" || req.PullIntervalSecs < 300 || req.PullIntervalSecs > maxPullIntervalSecs {
 		return apiErr(c, http.StatusBadRequest, "missing required fields or pull_interval_secs out of range [300, 518400]", "INVALID_REQUEST")
+	}
+
+	// Validate Plan
+	switch req.Plan {
+	case models.PlanEnterprise, models.PlanBusiness, models.PlanFreePro:
+		// ok
+	default:
+		return apiErr(c, http.StatusBadRequest, "invalid plan type", "INVALID_PLAN")
 	}
 
 	zone := &models.Zone{
@@ -233,6 +248,7 @@ func (h *Handlers) CreateZone(c echo.Context) error {
 		CustomerID:       customerID,
 		ZoneID:           req.ZoneID,
 		Name:             req.Name,
+		Plan:             req.Plan,
 		PullIntervalSecs: req.PullIntervalSecs,
 		Active:           true,
 	}
@@ -293,9 +309,10 @@ func (h *Handlers) DeleteZone(c echo.Context) error {
 
 // UpdateZoneRequest carries mutable zone fields (all optional – only provided fields are applied).
 type UpdateZoneRequest struct {
-	Name             *string `json:"name"`
-	PullIntervalSecs *int    `json:"pull_interval_secs"`
-	Active           *bool   `json:"active"`
+	Name             *string          `json:"name"`
+	Plan             *models.PlanType `json:"plan"`
+	PullIntervalSecs *int             `json:"pull_interval_secs"`
+	Active           *bool            `json:"active"`
 }
 
 // UpdateZone patches a zone (pause/resume/rename) without deleting it.
@@ -326,11 +343,21 @@ func (h *Handlers) UpdateZone(c echo.Context) error {
 
 	// Apply only the provided fields.
 	name := zone.Name
+	plan := zone.Plan
 	intervalSecs := zone.PullIntervalSecs
 	active := zone.Active
 
 	if req.Name != nil {
 		name = *req.Name
+	}
+	if req.Plan != nil {
+		p := *req.Plan
+		switch p {
+		case models.PlanEnterprise, models.PlanBusiness, models.PlanFreePro:
+			plan = p
+		default:
+			return apiErr(c, http.StatusBadRequest, "invalid plan_type", "INVALID_PLAN")
+		}
 	}
 	if req.PullIntervalSecs != nil {
 		const maxPullIntervalSecs = 518400
@@ -343,7 +370,7 @@ func (h *Handlers) UpdateZone(c echo.Context) error {
 		active = *req.Active
 	}
 
-	if err := h.db.Zones.Update(ctx, zoneID, customerID, name, intervalSecs, active); err != nil {
+	if err := h.db.Zones.Update(ctx, zoneID, customerID, name, plan, intervalSecs, active); err != nil {
 		c.Logger().Errorf("update zone %s: %v", zoneID, err)
 		return apiErr(c, http.StatusInternalServerError, "failed to update zone")
 	}

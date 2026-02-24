@@ -20,20 +20,20 @@ func NewCustomerRepository(db *pgxpool.Pool) *CustomerRepository {
 
 func (r *CustomerRepository) Create(ctx context.Context, c *models.Customer) error {
 	const q = `INSERT INTO customers
-		(id,name,email,cf_account_id,cf_api_key_enc,retention_days,created_at,updated_at)
-		VALUES($1,$2,$3,$4,$5,$6,now(),now())
+		(id,name,email,cf_account_id,cf_api_key_enc,retention_days,quota_bytes,created_at,updated_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,now(),now())
 		RETURNING created_at,updated_at`
 	return r.db.QueryRow(ctx, q,
-		c.ID, c.Name, c.Email, c.CFAccountID, c.CFAPIKeyEnc, c.RetentionDays,
+		c.ID, c.Name, c.Email, c.CFAccountID, c.CFAPIKeyEnc, c.RetentionDays, c.QuotaBytes,
 	).Scan(&c.CreatedAt, &c.UpdatedAt)
 }
 
 func (r *CustomerRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Customer, error) {
-	const q = `SELECT id,name,email,cf_account_id,cf_api_key_enc,retention_days,created_at,updated_at
+	const q = `SELECT id,name,email,cf_account_id,cf_api_key_enc,retention_days,quota_bytes,created_at,updated_at
 		FROM customers WHERE id=$1 AND deleted_at IS NULL`
 	c := &models.Customer{}
 	err := r.db.QueryRow(ctx, q, id).Scan(
-		&c.ID, &c.Name, &c.Email, &c.CFAccountID, &c.CFAPIKeyEnc, &c.RetentionDays,
+		&c.ID, &c.Name, &c.Email, &c.CFAccountID, &c.CFAPIKeyEnc, &c.RetentionDays, &c.QuotaBytes,
 		&c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
@@ -43,7 +43,7 @@ func (r *CustomerRepository) GetByID(ctx context.Context, id uuid.UUID) (*models
 }
 
 func (r *CustomerRepository) List(ctx context.Context) ([]*models.Customer, error) {
-	const q = `SELECT id,name,email,cf_account_id,cf_api_key_enc,retention_days,created_at,updated_at
+	const q = `SELECT id,name,email,cf_account_id,cf_api_key_enc,retention_days,quota_bytes,created_at,updated_at
 		FROM customers WHERE deleted_at IS NULL ORDER BY created_at DESC`
 	rows, err := r.db.Query(ctx, q)
 	if err != nil {
@@ -54,7 +54,7 @@ func (r *CustomerRepository) List(ctx context.Context) ([]*models.Customer, erro
 	for rows.Next() {
 		c := &models.Customer{}
 		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &c.CFAccountID, &c.CFAPIKeyEnc,
-			&c.RetentionDays, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			&c.RetentionDays, &c.QuotaBytes, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -221,12 +221,12 @@ func (r *ZoneRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-// Update patches mutable zone fields. Only supply the new values for name, intervalSecs, active.
-func (r *ZoneRepository) Update(ctx context.Context, zoneID, customerID uuid.UUID, name string, intervalSecs int, active bool) error {
+// Update patches mutable zone fields. Only supply the new values for name, plan, intervalSecs, active.
+func (r *ZoneRepository) Update(ctx context.Context, zoneID, customerID uuid.UUID, name string, plan models.PlanType, intervalSecs int, active bool) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE zones SET name=$3, pull_interval_secs=$4, active=$5, updated_at=now()
+		`UPDATE zones SET name=$3, plan=$4, pull_interval_secs=$5, active=$6, updated_at=now()
 		 WHERE id=$1 AND customer_id=$2 AND deleted_at IS NULL`,
-		zoneID, customerID, name, intervalSecs, active,
+		zoneID, customerID, name, plan, intervalSecs, active,
 	)
 	return err
 }
@@ -342,6 +342,20 @@ func (r *LogJobRepository) MarkExpired(ctx context.Context, id uuid.UUID) error 
 }
 
 // MarkVerified stamps verified_at = NOW() on a successfully integrity-checked job.
+// GetCurrentUsage returns the total byte count for done jobs in the current month.
+func (r *LogJobRepository) GetCurrentUsage(ctx context.Context, customerID uuid.UUID) (int64, error) {
+	const q = `
+		SELECT COALESCE(SUM(byte_count), 0)
+		FROM log_jobs
+		WHERE customer_id=$1
+		  AND status='done'
+		  AND created_at >= date_trunc('month', now())
+	`
+	var usage int64
+	err := r.db.QueryRow(ctx, q, customerID).Scan(&usage)
+	return usage, err
+}
+
 func (r *LogJobRepository) MarkVerified(ctx context.Context, id uuid.UUID) error {
 	_, err := r.db.Exec(ctx,
 		`UPDATE log_jobs SET verified_at=now(), updated_at=now() WHERE id=$1`,

@@ -10,15 +10,16 @@ import (
 
 // Config holds the full application configuration loaded from env / config file.
 type Config struct {
-	App        AppConfig        `mapstructure:"app"`
-	Database   DatabaseConfig   `mapstructure:"database"`
-	Redis      RedisConfig      `mapstructure:"redis"`
-	Storage    StorageConfig    `mapstructure:"storage"`
-	S3         S3Config         `mapstructure:"s3"`
-	JWT        JWTConfig        `mapstructure:"jwt"`
-	Cloudflare CloudflareConfig `mapstructure:"cloudflare"`
-	Worker     WorkerConfig     `mapstructure:"worker"`
-	KMS        KMSConfig        `mapstructure:"kms"`
+	App         AppConfig        `mapstructure:"app"`
+	Database    DatabaseConfig   `mapstructure:"database"`
+	Redis       RedisConfig      `mapstructure:"redis"`
+	Storage     StorageConfig    `mapstructure:"storage"`
+	S3          S3Config         `mapstructure:"s3"`
+	S3Secondary S3Config         `mapstructure:"s3_secondary"`
+	JWT         JWTConfig        `mapstructure:"jwt"`
+	Cloudflare  CloudflareConfig `mapstructure:"cloudflare"`
+	Worker      WorkerConfig     `mapstructure:"worker"`
+	KMS         KMSConfig        `mapstructure:"kms"`
 }
 
 type AppConfig struct {
@@ -47,9 +48,9 @@ type StorageConfig struct {
 }
 
 // S3Config holds credentials for an S3-compatible provider.
-// Multiple buckets can be configured via RAINLOGS_S3_PROVIDERS in YAML.
-// For simplicity we keep a single default and let storage layer handle routing.
+// Multiple buckets can be configured.
 type S3Config struct {
+	Name            string `mapstructure:"name"` // Provider label (e.g. "garage", "hetzner")
 	Endpoint        string `mapstructure:"endpoint"`
 	Region          string `mapstructure:"region"`
 	Bucket          string `mapstructure:"bucket"`
@@ -85,7 +86,9 @@ type WorkerConfig struct {
 	LogRetentionDays int `mapstructure:"log_retention_days"`
 }
 type KMSConfig struct {
-	Key string `mapstructure:"key"`
+	Key       string            `mapstructure:"key"`        // Legacy single key (mapped to "v1")
+	Keys      map[string]string `mapstructure:"keys"`       // Map of keyID -> hexKey
+	ActiveKey string            `mapstructure:"active_key"` // ID of the key to use for encryption
 }
 
 // Load reads configuration from environment variables and optional config file.
@@ -154,6 +157,23 @@ func Load() (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("config: unmarshal: %w", err)
 	}
-
+	// 4. Validate / Normalize KMS configuration
+	if cfg.KMS.Keys == nil {
+		cfg.KMS.Keys = make(map[string]string)
+	}
+	if cfg.KMS.Key != "" {
+		// If legacy key is present, ensure it's in the map as "v1"
+		if _, ok := cfg.KMS.Keys["v1"]; !ok {
+			cfg.KMS.Keys["v1"] = cfg.KMS.Key
+		}
+	}
+	if cfg.KMS.ActiveKey == "" {
+		// Default to v1 if not specified
+		cfg.KMS.ActiveKey = "v1"
+	}
+	// Ensure active key exists
+	if _, ok := cfg.KMS.Keys[cfg.KMS.ActiveKey]; !ok {
+		return nil, fmt.Errorf("active key %s not defined in kms.keys", cfg.KMS.ActiveKey)
+	}
 	return &cfg, nil
 }

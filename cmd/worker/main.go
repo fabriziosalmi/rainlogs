@@ -13,6 +13,7 @@ import (
 	"github.com/fabriziosalmi/rainlogs/internal/config"
 	"github.com/fabriziosalmi/rainlogs/internal/db"
 	"github.com/fabriziosalmi/rainlogs/internal/kms"
+	"github.com/fabriziosalmi/rainlogs/internal/notifications"
 	"github.com/fabriziosalmi/rainlogs/internal/queue"
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
 	"github.com/fabriziosalmi/rainlogs/internal/worker"
@@ -44,36 +45,59 @@ func main() {
 	defer database.Close()
 
 	// 2. Init KMS
-	if cfg.KMS.Key == "" {
-		cancel()
-		log.Fatal("KMS key is required (RAINLOGS_KMS_KEY)")
-	}
-	kmsService, err := kms.New(cfg.KMS.Key)
+	kmsService, err := kms.NewKeyRing(cfg.KMS.Keys, cfg.KMS.ActiveKey)
 	if err != nil {
 		cancel()
 		log.Fatal("failed to init kms", zap.Error(err))
 	}
 
 	// 3. Init Storage
-	var backend storage.Backend
-	var storeErr error
+	var backends []storage.Backend
 
 	switch cfg.Storage.Backend {
-	case "s3":
-		backend, storeErr = storage.New(ctx, cfg.S3, "s3-default")
+	case "s3", "multi": // multi is implicit for s3
+		// Primary
+		primaryID := cfg.S3.Name
+		if primaryID == "" {
+			primaryID = "s3-primary"
+		}
+		primary, err := storage.New(ctx, cfg.S3, primaryID)
+		if err != nil {
+			cancel()
+			log.Fatal("failed to init primary storage", zap.Error(err))
+		}
+		backends = append(backends, primary)
+
+		// Secondary (Failover)
+		if cfg.S3Secondary.Bucket != "" {
+			secondaryID := cfg.S3Secondary.Name
+			if secondaryID == "" {
+				secondaryID = "s3-secondary"
+			}
+			secondary, err := storage.New(ctx, cfg.S3Secondary, secondaryID)
+			if err != nil {
+				// Don't fail hard if secondary is bad, but warn log
+				log.Error("failed to init secondary storage", zap.Error(err))
+			} else {
+				backends = append(backends, secondary)
+				log.Info("enabled secondary storage failover", zap.String("provider", secondaryID))
+			}
+		}
+
 	case "fs":
-		backend, storeErr = storage.NewFSStore(cfg.Storage.FSRoot)
+		bst, err := storage.NewFSStore(cfg.Storage.FSRoot)
+		if err != nil {
+			cancel()
+			log.Fatal("failed to init fs storage", zap.Error(err))
+		}
+		backends = append(backends, bst)
+
 	default:
 		cancel()
 		log.Fatal("unknown storage backend", zap.String("backend", cfg.Storage.Backend))
 	}
 
-	if storeErr != nil {
-		cancel()
-		log.Fatal("failed to init storage", zap.String("backend", cfg.Storage.Backend), zap.Error(storeErr))
-	}
-
-	s3Client := storage.NewMultiStore(backend)
+	s3Client := storage.NewMultiStore(backends...)
 
 	// 4. Init Queue
 	redisOpt := asynq.RedisClientOpt{
@@ -85,17 +109,20 @@ func main() {
 	queueClient := asynq.NewClient(redisOpt)
 	defer queueClient.Close()
 
-	// 5. Init Processors
-	pullProcessor := worker.NewLogPullProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, log)
-	securityProcessor := worker.NewSecurityEventsProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, log)
+	// 5. Init Notifier
+	notifier := &notifications.ConsoleNotifier{}
+
+	// 6. Init Processors
+	pullProcessor := worker.NewLogPullProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, log, notifier)
+	securityProcessor := worker.NewSecurityEventsProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, log, notifier)
 	verifyProcessor := worker.NewLogVerifyProcessor(database, s3Client, log)
 	expireProcessor := worker.NewLogExpireProcessor(database, s3Client, log)
 
-	// 5b. Init Instant Logs Daemon
-	instantLogsManager := worker.NewInstantLogsManager(database, kmsService, s3Client, cfg.Cloudflare, log)
+	// 6b. Init Instant Logs Daemon
+	instantLogsManager := worker.NewInstantLogsManager(database, kmsService, s3Client, cfg.Cloudflare, log, notifier)
 	go instantLogsManager.Start(ctx)
 
-	// 6. Start Scheduler
+	// 7. Start Scheduler
 	scheduler := worker.NewZoneScheduler(database, queueClient, log, cfg.Worker.SchedulerInterval)
 	go scheduler.Run(ctx)
 

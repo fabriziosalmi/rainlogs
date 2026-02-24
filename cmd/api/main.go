@@ -49,10 +49,7 @@ func main() {
 	defer database.Close()
 
 	// 2. Init KMS
-	if cfg.KMS.Key == "" {
-		log.Fatal("KMS key is required (RAINLOGS_KMS_KEY)")
-	}
-	kmsService, err := kms.New(cfg.KMS.Key)
+	kmsService, err := kms.NewKeyRing(cfg.KMS.Keys, cfg.KMS.ActiveKey)
 	if err != nil {
 		log.Fatal("failed to init kms", zap.Error(err))
 	}
