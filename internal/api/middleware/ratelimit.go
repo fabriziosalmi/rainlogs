@@ -93,3 +93,29 @@ func RateLimit(rps float64, burst int) echo.MiddlewareFunc {
 		}
 	}
 }
+
+// CustomerRateLimit returns a middleware that limits requests per authenticated customer ID.
+// This prevents a single noisy tenant from consuming disproportionate API quota.
+// Apply after APIKeyAuth or JWTAuth so ContextKeyCustomerID is populated.
+func CustomerRateLimit(rps float64, burst int) echo.MiddlewareFunc {
+	limiter := newIPLimiter(rate.Limit(rps), burst)
+	limitStr := strconv.Itoa(burst)
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			// Key by customer UUID string; fall back to IP if context missing.
+			key := c.RealIP()
+			if cid, ok := c.Get(ContextKeyCustomerID).(interface{ String() string }); ok {
+				key = cid.String()
+			}
+			if !limiter.get(key).Allow() {
+				h := c.Response().Header()
+				h.Set("Retry-After", "1")
+				h.Set("X-RateLimit-Limit", limitStr)
+				h.Set("X-RateLimit-Remaining", "0")
+				return echo.NewHTTPError(http.StatusTooManyRequests, "rate limit exceeded")
+			}
+			c.Response().Header().Set("X-RateLimit-Limit", limitStr)
+			return next(c)
+		}
+	}
+}

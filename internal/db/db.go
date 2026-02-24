@@ -10,12 +10,13 @@ import (
 )
 
 type DB struct {
-	Pool       *pgxpool.Pool
-	Customers  *CustomerRepository
-	APIKeys    *APIKeyRepository
-	Zones      *ZoneRepository
-	LogJobs    *LogJobRepository
-	LogObjects *LogObjectRepository
+	Pool        *pgxpool.Pool
+	Customers   *CustomerRepository
+	APIKeys     *APIKeyRepository
+	Zones       *ZoneRepository
+	LogJobs     *LogJobRepository
+	LogObjects  *LogObjectRepository
+	AuditEvents *AuditEventRepository
 }
 
 // Connect returns a pgxpool.Pool configured from cfg.
@@ -38,12 +39,13 @@ func Connect(ctx context.Context, cfg config.DatabaseConfig) (*DB, error) {
 	}
 
 	return &DB{
-		Pool:       pool,
-		Customers:  NewCustomerRepository(pool),
-		APIKeys:    NewAPIKeyRepository(pool),
-		Zones:      NewZoneRepository(pool),
-		LogJobs:    NewLogJobRepository(pool),
-		LogObjects: NewLogObjectRepository(pool),
+		Pool:        pool,
+		Customers:   NewCustomerRepository(pool),
+		APIKeys:     NewAPIKeyRepository(pool),
+		Zones:       NewZoneRepository(pool),
+		LogJobs:     NewLogJobRepository(pool),
+		LogObjects:  NewLogObjectRepository(pool),
+		AuditEvents: NewAuditEventRepository(pool),
 	}, nil
 }
 

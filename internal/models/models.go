@@ -18,14 +18,15 @@ const (
 
 // Customer is a tenant.
 type Customer struct {
-	ID            uuid.UUID `db:"id"             json:"id"`
-	Name          string    `db:"name"           json:"name"`
-	Email         string    `db:"email"          json:"email"`
-	CFAccountID   string    `db:"cf_account_id"  json:"cf_account_id"`
-	CFAPIKeyEnc   string    `db:"cf_api_key_enc" json:"-"`
-	RetentionDays int       `db:"retention_days" json:"retention_days"`
-	CreatedAt     time.Time `db:"created_at"     json:"created_at"`
-	UpdatedAt     time.Time `db:"updated_at"     json:"updated_at"`
+	ID            uuid.UUID  `db:"id"             json:"id"`
+	Name          string     `db:"name"           json:"name"`
+	Email         string     `db:"email"          json:"email"`
+	CFAccountID   string     `db:"cf_account_id"  json:"cf_account_id"`
+	CFAPIKeyEnc   string     `db:"cf_api_key_enc" json:"-"`
+	RetentionDays int        `db:"retention_days" json:"retention_days"`
+	CreatedAt     time.Time  `db:"created_at"     json:"created_at"`
+	UpdatedAt     time.Time  `db:"updated_at"     json:"updated_at"`
+	DeletedAt     *time.Time `db:"deleted_at"     json:"deleted_at,omitempty"`
 }
 
 // APIKey is a hashed bearer token for a customer.
@@ -38,6 +39,7 @@ type APIKey struct {
 	CreatedAt  time.Time  `db:"created_at"   json:"created_at"`
 	LastUsedAt *time.Time `db:"last_used_at" json:"last_used_at,omitempty"`
 	RevokedAt  *time.Time `db:"revoked_at"   json:"revoked_at,omitempty"`
+	ExpiresAt  *time.Time `db:"expires_at"   json:"expires_at,omitempty"`
 }
 
 // Zone is a Cloudflare zone registered for a customer.
@@ -50,6 +52,7 @@ type Zone struct {
 	LastPulledAt     *time.Time `db:"last_pulled_at"     json:"last_pulled_at,omitempty"`
 	Active           bool       `db:"active"             json:"active"`
 	CreatedAt        time.Time  `db:"created_at"         json:"created_at"`
+	DeletedAt        *time.Time `db:"deleted_at"         json:"deleted_at,omitempty"`
 }
 
 // LogJob tracks a single Logpull fetch window.
@@ -104,6 +107,19 @@ type IncidentEvent struct {
 	RayID       string    `json:"ray_id"`
 	HTTPStatus  int       `json:"http_status"`
 	Description string    `json:"description"`
+}
+
+// AuditEvent records a mutating API action for GDPR Art.30 / NIS2 Art.21 compliance.
+type AuditEvent struct {
+	ID          uuid.UUID  `db:"id"           json:"id"`
+	CustomerID  *uuid.UUID `db:"customer_id"  json:"customer_id,omitempty"`
+	RequestID   string     `db:"request_id"   json:"request_id"`
+	Action      string     `db:"action"       json:"action"`
+	ResourceID  string     `db:"resource_id"  json:"resource_id,omitempty"`
+	IPAddress   string     `db:"ip_address"   json:"ip_address"`
+	StatusCode  int        `db:"status_code"  json:"status_code"`
+	ErrorDetail string     `db:"error_detail" json:"error_detail,omitempty"`
+	CreatedAt   time.Time  `db:"created_at"   json:"created_at"`
 }
 
 // SearchFilter carries parameters for the log search API.

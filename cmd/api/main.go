@@ -20,6 +20,7 @@ import (
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
 	"github.com/fabriziosalmi/rainlogs/pkg/logger"
 	"github.com/hibiken/asynq"
+	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	echomw "github.com/labstack/echo/v4/middleware"
 	"go.uber.org/zap"
@@ -88,13 +89,20 @@ func main() {
 	e.Use(echomw.Logger())
 	e.Use(echomw.Recover())
 	e.Use(echomw.CORSWithConfig(echomw.CORSConfig{
-		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodOptions},
+		AllowMethods: []string{
+			http.MethodGet, http.MethodPost, http.MethodPatch,
+			http.MethodDelete, http.MethodOptions,
+		},
 		AllowHeaders: []string{echo.HeaderAuthorization, echo.HeaderContentType, echo.HeaderAccept},
 		MaxAge:       3600,
 	}))
 	e.Use(echomw.GzipWithConfig(echomw.GzipConfig{Level: 5}))
-	// 60 req/s per IP, burst of 120
+	// 60 req/s per IP, burst of 120 (global guard before auth)
 	e.Use(apimw.RateLimit(60, 120))
+
+	// C1: Prometheus metrics (unauthenticated – standard SRE convention)
+	e.Use(echoprometheus.NewMiddleware("rainlogs"))
+	e.GET("/metrics", echoprometheus.NewHandler())
 
 	jwtSecret := cfg.JWT.Secret
 	if jwtSecret == "" {

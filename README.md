@@ -5,7 +5,7 @@
 RainLogs collects logs from Cloudflare zones via the **Logpull API** (available on Free, Pro, and Business plans) and stores them in **EU-sovereign object storage** (Garage S3-compatible, Hetzner, Contabo) with **WORM integrity guarantees** suitable for NIS2 / D.Lgs. 138/2024 incident forensics.
 
 [![CI](https://github.com/fabriziosalmi/rainlogs/actions/workflows/ci.yml/badge.svg)](https://github.com/fabriziosalmi/rainlogs/actions/workflows/ci.yml)
-[![Go 1.24](https://img.shields.io/badge/go-1.24-blue)](https://go.dev)
+[![Go 1.25](https://img.shields.io/badge/go-1.25-blue)](https://go.dev)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 ## Why
@@ -60,8 +60,8 @@ RainLogs collects logs from Cloudflare zones via the **Logpull API** (available 
 
 | Component | Tech | Notes |
 |-----------|------|-------|
-| API server | Go 1.24 + Echo v4 | REST, API-key + JWT auth, rate limiting, security headers |
-| Worker | Go 1.24 + asynq | Pulls CF logs, stores WORM objects, verifies integrity |
+| API server | Go 1.25 + Echo v4 | REST, API-key + JWT auth, per-customer rate limiting, security headers, Prometheus metrics |
+| Worker | Go 1.25 + asynq | Pulls CF logs, stores WORM objects, verifies integrity |
 | Queue | Redis 7 (asynq) | Reliable at-least-once delivery, retry with exponential backoff |
 | Database | PostgreSQL 16 | Customers, zones, log jobs, WORM chain hashes |
 | Object store | Garage / S3-compatible | EU-sovereign, partitioned by zone/date/hour, multi-provider failover |
@@ -102,7 +102,7 @@ kubectl apply -f k8s/
 
 ### Prerequisites
 
-- Go ≥ 1.24
+- Go ≥ 1.25
 - Docker + Docker Compose v2
 - `make`
 
@@ -155,29 +155,43 @@ See the [full API reference](docs/guide/api-reference.md) for request/response s
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/health` | Public | Health + dependency status |
+| `GET` | `/metrics` | Public | Prometheus metrics (SRE) |
 | `POST` | `/customers` | Public | Register a new customer |
 | `GET` | `/api/v1/customers/:id` | API Key | Get own customer profile |
-| `POST` | `/api/v1/api-keys` | API Key | Issue a new API key |
+| `DELETE` | `/api/v1/customers/:id` | API Key | Erase account + all data (GDPR Art. 17) |
+| `GET` | `/api/v1/export` | API Key | Export all data as JSON (GDPR Art. 20) |
+| `GET` | `/api/v1/audit-log` | API Key | List own audit events (GDPR Art. 30) |
+| `POST` | `/api/v1/api-keys` | API Key | Issue a new API key (optional `expires_in_days`) |
 | `GET` | `/api/v1/api-keys` | API Key | List API keys |
 | `DELETE` | `/api/v1/api-keys/:key_id` | API Key | Revoke an API key |
 | `POST` | `/api/v1/zones` | API Key | Add a Cloudflare zone |
 | `GET` | `/api/v1/zones` | API Key | List zones (includes `health` field) |
-| `DELETE` | `/api/v1/zones/:zone_id` | API Key | Remove a zone |
+| `PATCH` | `/api/v1/zones/:zone_id` | API Key | Pause / resume / rename zone |
+| `DELETE` | `/api/v1/zones/:zone_id` | API Key | Remove a zone (soft-delete) |
 | `POST` | `/api/v1/zones/:zone_id/pull` | API Key | Trigger immediate pull |
 | `GET` | `/api/v1/zones/:zone_id/logs` | API Key | List log jobs for a zone (paginated) |
 | `GET` | `/api/v1/logs/jobs` | API Key | List all log jobs (paginated) |
 | `GET` | `/api/v1/logs/jobs/:job_id` | API Key | Get single job + WORM hashes |
 | `GET` | `/api/v1/logs/jobs/:job_id/download` | API Key | Download NDJSON archive |
 
+All `/dashboard/*` routes mirror the above with JWT authentication instead of API keys.
+
 ### Rate Limiting
 
-60 requests/second per IP, burst of 120. Returns `429 Too Many Requests` with `Retry-After` and `X-RateLimit-*` headers when exceeded.
+- **Global**: 60 req/s per IP, burst 120 (applied before auth)
+- **Per-customer**: 30 req/s per authenticated customer, burst 60 (prevents tenant starvation)
+
+Both layers return `429 Too Many Requests` with `Retry-After` and `X-RateLimit-*` headers.
 
 ### Error Responses
 
+Machine-readable `error_code` field enables programmatic handling:
+
 ```json
-{ "code": 400, "message": "missing required fields", "request_id": "550e8400-..." }
+{ "code": 409, "message": "email already registered", "error_code": "CUSTOMER_EMAIL_EXISTS", "request_id": "550e8400-..." }
 ```
+
+Key error codes: `ZONE_NOT_FOUND`, `JOB_NOT_FOUND`, `ACCESS_DENIED`, `INVALID_REQUEST`, `API_KEY_EXPIRED`, `CUSTOMER_EMAIL_EXISTS`.
 
 ---
 
@@ -209,11 +223,17 @@ make help        # All available targets
 
 | Regulation | How RainLogs addresses it |
 |---|---|
-| **NIS2 art. 21** | 13-month log retention (configurable), tamper-evident WORM chain |
+| **NIS2 art. 21** | 13-month log retention (configurable), tamper-evident WORM chain, persistent audit trail |
 | **NIS2 art. 23** | Structured NDJSON archives queryable by time window for 24h incident reporting |
-| **GDPR art. 17** | Retention-based automatic deletion of S3 objects + DB records |
+| **GDPR art. 17** | `DELETE /customers/:id` erases all S3 objects, zones, keys + soft-deletes account in one call |
+| **GDPR art. 20** | `GET /export` returns a portable JSON snapshot of all customer data |
+| **GDPR art. 30** | `audit_events` table + `GET /audit-log` — every mutating action recorded with IP, timestamp, result |
 | **GDPR art. 32** | AES-256-GCM encryption at rest for Cloudflare API keys, bcrypt for API keys |
+| **ISO 27001 A.9.4** | API key expiration (`expires_in_days`) with enforcement at auth time |
 | **EU data sovereignty** | Storage exclusively on EU-based providers (Garage, Hetzner, Contabo) |
+| **Supply chain** | SBOM (SPDX-JSON) generated and attached to every GitHub release via `anchore/sbom-action` |
+| **Container security** | Trivy scans for CRITICAL/HIGH CVEs before every push; fails the build if found |
+| **Network isolation** | Docker `backend` network (internal) + `frontend` network; DB/Redis never reachable from outside |
 
 ---
 

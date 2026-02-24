@@ -7,7 +7,7 @@ on:
     branches: [main, master]
 
 env:
-  GO_VERSION: "1.24.x"
+  GO_VERSION: "1.25.x"
 
 jobs:
   # ── Lint ───────────────────────────────────────────────────────────────────
@@ -258,3 +258,18 @@ jobs:
           labels: ${{ steps.meta-worker.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # D3: SBOM generation (supply-chain transparency – ISO 27001 A.14.2.7)
+      - name: Generate SBOM for API image
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}-api:latest
+          artifact-name: sbom-api.spdx
+          format: spdx-json
+
+      - name: Generate SBOM for Worker image
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}-worker:latest
+          artifact-name: sbom-worker.spdx
+          format: spdx-json

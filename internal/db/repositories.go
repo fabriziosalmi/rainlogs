@@ -30,7 +30,7 @@ func (r *CustomerRepository) Create(ctx context.Context, c *models.Customer) err
 
 func (r *CustomerRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Customer, error) {
 	const q = `SELECT id,name,email,cf_account_id,cf_api_key_enc,retention_days,created_at,updated_at
-		FROM customers WHERE id=$1`
+		FROM customers WHERE id=$1 AND deleted_at IS NULL`
 	c := &models.Customer{}
 	err := r.db.QueryRow(ctx, q, id).Scan(
 		&c.ID, &c.Name, &c.Email, &c.CFAccountID, &c.CFAPIKeyEnc, &c.RetentionDays,
@@ -44,7 +44,7 @@ func (r *CustomerRepository) GetByID(ctx context.Context, id uuid.UUID) (*models
 
 func (r *CustomerRepository) List(ctx context.Context) ([]*models.Customer, error) {
 	const q = `SELECT id,name,email,cf_account_id,cf_api_key_enc,retention_days,created_at,updated_at
-		FROM customers ORDER BY created_at DESC`
+		FROM customers WHERE deleted_at IS NULL ORDER BY created_at DESC`
 	rows, err := r.db.Query(ctx, q)
 	if err != nil {
 		return nil, err
@@ -62,6 +62,15 @@ func (r *CustomerRepository) List(ctx context.Context) ([]*models.Customer, erro
 	return out, rows.Err()
 }
 
+// SoftDelete marks a customer as deleted (GDPR Art. 17 – right to erasure).
+func (r *CustomerRepository) SoftDelete(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE customers SET deleted_at=now(), updated_at=now() WHERE id=$1 AND deleted_at IS NULL`,
+		id,
+	)
+	return err
+}
+
 // ── APIKeyRepository ──────────────────────────────────────────────────────────
 
 type APIKeyRepository struct{ db *pgxpool.Pool }
@@ -71,13 +80,15 @@ func NewAPIKeyRepository(db *pgxpool.Pool) *APIKeyRepository {
 }
 
 func (r *APIKeyRepository) Create(ctx context.Context, k *models.APIKey) error {
-	const q = `INSERT INTO api_keys(id,customer_id,prefix,key_hash,label,created_at)
-		VALUES($1,$2,$3,$4,$5,now()) RETURNING created_at`
-	return r.db.QueryRow(ctx, q, k.ID, k.CustomerID, k.Prefix, k.KeyHash, k.Label).Scan(&k.CreatedAt)
+	const q = `INSERT INTO api_keys(id,customer_id,prefix,key_hash,label,expires_at,created_at)
+		VALUES($1,$2,$3,$4,$5,$6,now()) RETURNING created_at`
+	return r.db.QueryRow(ctx, q,
+		k.ID, k.CustomerID, k.Prefix, k.KeyHash, k.Label, k.ExpiresAt,
+	).Scan(&k.CreatedAt)
 }
 
 func (r *APIKeyRepository) GetByPrefix(ctx context.Context, prefix string) ([]*models.APIKey, error) {
-	const q = `SELECT id,customer_id,prefix,key_hash,label,created_at,last_used_at,revoked_at
+	const q = `SELECT id,customer_id,prefix,key_hash,label,created_at,last_used_at,revoked_at,expires_at
 		FROM api_keys WHERE prefix=$1 AND revoked_at IS NULL`
 	rows, err := r.db.Query(ctx, q, prefix)
 	if err != nil {
@@ -88,7 +99,7 @@ func (r *APIKeyRepository) GetByPrefix(ctx context.Context, prefix string) ([]*m
 	for rows.Next() {
 		k := &models.APIKey{}
 		if err := rows.Scan(&k.ID, &k.CustomerID, &k.Prefix, &k.KeyHash, &k.Label,
-			&k.CreatedAt, &k.LastUsedAt, &k.RevokedAt); err != nil {
+			&k.CreatedAt, &k.LastUsedAt, &k.RevokedAt, &k.ExpiresAt); err != nil {
 			return nil, err
 		}
 		out = append(out, k)
@@ -106,13 +117,22 @@ func (r *APIKeyRepository) Revoke(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+// RevokeByCustomer revokes all active API keys for a customer (used in GDPR erasure).
+func (r *APIKeyRepository) RevokeByCustomer(ctx context.Context, customerID uuid.UUID) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE api_keys SET revoked_at=now() WHERE customer_id=$1 AND revoked_at IS NULL`,
+		customerID,
+	)
+	return err
+}
+
 func (r *APIKeyRepository) GetByCustomerAndID(ctx context.Context, customerID, keyID uuid.UUID) (*models.APIKey, error) {
-	const q = `SELECT id,customer_id,prefix,key_hash,label,created_at,last_used_at,revoked_at
+	const q = `SELECT id,customer_id,prefix,key_hash,label,created_at,last_used_at,revoked_at,expires_at
 		FROM api_keys WHERE customer_id=$1 AND id=$2`
 	k := &models.APIKey{}
 	err := r.db.QueryRow(ctx, q, customerID, keyID).Scan(
 		&k.ID, &k.CustomerID, &k.Prefix, &k.KeyHash, &k.Label,
-		&k.CreatedAt, &k.LastUsedAt, &k.RevokedAt,
+		&k.CreatedAt, &k.LastUsedAt, &k.RevokedAt, &k.ExpiresAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("api_key get: %w", err)
@@ -121,7 +141,7 @@ func (r *APIKeyRepository) GetByCustomerAndID(ctx context.Context, customerID, k
 }
 
 func (r *APIKeyRepository) ListByCustomer(ctx context.Context, customerID uuid.UUID) ([]*models.APIKey, error) {
-	const q = `SELECT id,customer_id,prefix,key_hash,label,created_at,last_used_at,revoked_at
+	const q = `SELECT id,customer_id,prefix,key_hash,label,created_at,last_used_at,revoked_at,expires_at
 		FROM api_keys WHERE customer_id=$1 ORDER BY created_at DESC`
 	rows, err := r.db.Query(ctx, q, customerID)
 	if err != nil {
@@ -132,7 +152,7 @@ func (r *APIKeyRepository) ListByCustomer(ctx context.Context, customerID uuid.U
 	for rows.Next() {
 		k := &models.APIKey{}
 		if err := rows.Scan(&k.ID, &k.CustomerID, &k.Prefix, &k.KeyHash, &k.Label,
-			&k.CreatedAt, &k.LastUsedAt, &k.RevokedAt); err != nil {
+			&k.CreatedAt, &k.LastUsedAt, &k.RevokedAt, &k.ExpiresAt); err != nil {
 			return nil, err
 		}
 		out = append(out, k)
@@ -158,7 +178,7 @@ func (r *ZoneRepository) Create(ctx context.Context, z *models.Zone) error {
 
 func (r *ZoneRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Zone, error) {
 	const q = `SELECT id,customer_id,zone_id,name,pull_interval_secs,last_pulled_at,active,created_at
-		FROM zones WHERE id=$1`
+		FROM zones WHERE id=$1 AND deleted_at IS NULL`
 	z := &models.Zone{}
 	err := r.db.QueryRow(ctx, q, id).Scan(&z.ID, &z.CustomerID, &z.ZoneID, &z.Name,
 		&z.PullIntervalSecs, &z.LastPulledAt, &z.Active, &z.CreatedAt)
@@ -170,7 +190,7 @@ func (r *ZoneRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Zon
 
 func (r *ZoneRepository) ListByCustomer(ctx context.Context, customerID uuid.UUID) ([]*models.Zone, error) {
 	const q = `SELECT id,customer_id,zone_id,name,pull_interval_secs,last_pulled_at,active,created_at
-		FROM zones WHERE customer_id=$1`
+		FROM zones WHERE customer_id=$1 AND deleted_at IS NULL`
 	return r.scanZones(ctx, q, customerID)
 }
 
@@ -178,6 +198,7 @@ func (r *ZoneRepository) ListDue(ctx context.Context) ([]*models.Zone, error) {
 	const q = `SELECT id,customer_id,zone_id,name,pull_interval_secs,last_pulled_at,active,created_at
 		FROM zones
 		WHERE active=true
+		  AND deleted_at IS NULL
 		  AND (last_pulled_at IS NULL OR
 		       last_pulled_at < now() - (pull_interval_secs || ' seconds')::interval)`
 	return r.scanZones(ctx, q)
@@ -188,8 +209,32 @@ func (r *ZoneRepository) UpdateLastPulled(ctx context.Context, id uuid.UUID, t t
 	return err
 }
 
+// Delete soft-deletes a zone (GDPR Art. 17 – schema already has deleted_at column).
 func (r *ZoneRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM zones WHERE id=$1`, id)
+	_, err := r.db.Exec(ctx,
+		`UPDATE zones SET deleted_at=now(), updated_at=now() WHERE id=$1 AND deleted_at IS NULL`,
+		id,
+	)
+	return err
+}
+
+// Update patches mutable zone fields. Only supply the new values for name, intervalSecs, active.
+func (r *ZoneRepository) Update(ctx context.Context, zoneID, customerID uuid.UUID, name string, intervalSecs int, active bool) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE zones SET name=$3, pull_interval_secs=$4, active=$5, updated_at=now()
+		 WHERE id=$1 AND customer_id=$2 AND deleted_at IS NULL`,
+		zoneID, customerID, name, intervalSecs, active,
+	)
+	return err
+}
+
+// SoftDeleteByCustomer soft-deletes all non-deleted zones owned by a customer.
+func (r *ZoneRepository) SoftDeleteByCustomer(ctx context.Context, customerID uuid.UUID) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE zones SET deleted_at=now(), updated_at=now()
+		 WHERE customer_id=$1 AND deleted_at IS NULL`,
+		customerID,
+	)
 	return err
 }
 
@@ -349,4 +394,47 @@ func (r *LogJobRepository) GetLastJob(ctx context.Context, zoneID uuid.UUID) (*m
 		return nil, err
 	}
 	return j, nil
+}
+
+// ── AuditEventRepository ─────────────────────────────────────────────────────
+
+type AuditEventRepository struct{ db *pgxpool.Pool }
+
+func NewAuditEventRepository(db *pgxpool.Pool) *AuditEventRepository {
+	return &AuditEventRepository{db: db}
+}
+
+// Create inserts an audit event. Nullable string fields are stored as SQL NULL when empty.
+func (r *AuditEventRepository) Create(ctx context.Context, e *models.AuditEvent) error {
+	const q = `INSERT INTO audit_events
+		(id,customer_id,request_id,action,resource_id,ip_address,status_code,error_detail)
+		VALUES($1,$2,$3,$4,NULLIF($5,''),$6,$7,NULLIF($8,''))`
+	_, err := r.db.Exec(ctx, q,
+		e.ID, e.CustomerID, e.RequestID, e.Action, e.ResourceID,
+		e.IPAddress, e.StatusCode, e.ErrorDetail,
+	)
+	return err
+}
+
+// ListByCustomer returns the most recent audit events for a customer.
+func (r *AuditEventRepository) ListByCustomer(ctx context.Context, customerID uuid.UUID, limit, offset int) ([]*models.AuditEvent, error) {
+	const q = `SELECT id,customer_id,request_id,action,
+			COALESCE(resource_id,''),ip_address,status_code,
+			COALESCE(error_detail,''),created_at
+		FROM audit_events WHERE customer_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	rows, err := r.db.Query(ctx, q, customerID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*models.AuditEvent
+	for rows.Next() {
+		e := &models.AuditEvent{}
+		if err := rows.Scan(&e.ID, &e.CustomerID, &e.RequestID, &e.Action,
+			&e.ResourceID, &e.IPAddress, &e.StatusCode, &e.ErrorDetail, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
