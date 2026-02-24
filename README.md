@@ -92,8 +92,23 @@ curl -fsSL https://raw.githubusercontent.com/fabriziosalmi/rainlogs/main/install
 
 ### Option 2: Kubernetes (K3s / K8s)
 
+Deploy a production-ready stack with Ingress (nginx/Traefik), Autoscaling (HPA), and External Secrets (Vault, AWS, Azure).
+
 ```bash
-kubectl apply -f k8s/
+# 1. Base deployment (ConfigMap, DB, Redis)
+kubectl apply -f k8s/00-base.yaml
+kubectl apply -f k8s/10-dependencies.yaml
+
+# 2. Application (Migrations, API, Worker)
+kubectl apply -f k8s/20-app.yaml
+
+# 3. Networking (Ingress)
+# Edit k8s/25-ingress.yaml to select nginx or Traefik
+kubectl apply -f k8s/25-ingress.yaml
+
+# 4. Scaling & Secrets (Optional)
+kubectl apply -f k8s/30-hpa.yaml              # Horizontal Pod Autoscaler
+kubectl apply -f k8s/35-external-secrets.yaml # External Secrets Operator
 ```
 
 ---
@@ -142,7 +157,7 @@ make migrate-up
 
 ```bash
 make dev-api     # → :8080
-make dev-worker  # → zone scheduler every 5 min
+make dev-worker  # → zone scheduler runs every 1 min (configurable)
 ```
 
 ---

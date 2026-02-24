@@ -1,37 +1,13 @@
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: rainlogs-migration
-  namespace: rainlogs
-spec:
-  template:
-    spec:
-      containers:
-      - name: migrate
-        image: migrate/migrate:v4.17.0
-        command: ["/bin/sh", "-c", "/migrate -path=/migrations -database $DATABASE_URL up"]
-        env:
-        - name: DATABASE_URL
-          valueFrom:
-            configMapKeyRef:
-              name: rainlogs-config
-              key: RAINLOGS_DATABASE_DSN
-        volumeMounts:
-        - name: migrations
-          mountPath: /migrations
-      volumes:
-      - name: migrations
-        configMap:
-          name: rainlogs-migrations
-      restartPolicy: OnFailure
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rainlogs-api
   namespace: rainlogs
+  labels:
+    app: rainlogs-api
+    version: v0.6.0
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: rainlogs-api
@@ -40,6 +16,26 @@ spec:
       labels:
         app: rainlogs-api
     spec:
+      # Run migrations atomically before the API starts.
+      # initContainers are retried until success; Kubernetes waits before starting main containers.
+      initContainers:
+      - name: migrate
+        image: migrate/migrate:v4.17.0
+        command:
+        - /migrate
+        - -path=/migrations
+        - -database
+        - $(RAINLOGS_DATABASE_DSN)
+        - up
+        env:
+        - name: RAINLOGS_DATABASE_DSN
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_DATABASE_DSN
+        volumeMounts:
+        - name: migrations
+          mountPath: /migrations
       containers:
       - name: api
         image: rainlogs-api:latest
@@ -47,9 +43,39 @@ spec:
         ports:
         - containerPort: 8080
           name: http
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: "2"
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
         env:
+        # ── Non-sensitive config (ConfigMap) ────────────────────────────────
         - name: RAINLOGS_APP_ENV
-          value: "production"
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_APP_ENV
+        - name: RAINLOGS_APP_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_APP_PORT
         - name: RAINLOGS_DATABASE_DSN
           valueFrom:
             configMapKeyRef:
@@ -65,6 +91,21 @@ spec:
             configMapKeyRef:
               name: rainlogs-config
               key: RAINLOGS_S3_ENDPOINT
+        - name: RAINLOGS_S3_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_S3_REGION
+        - name: RAINLOGS_S3_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_S3_BUCKET
+        - name: RAINLOGS_S3_FORCE_PATH_STYLE
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_S3_FORCE_PATH_STYLE
         - name: RAINLOGS_STORAGE_BACKEND
           valueFrom:
             configMapKeyRef:
@@ -75,7 +116,36 @@ spec:
             configMapKeyRef:
               name: rainlogs-config
               key: RAINLOGS_STORAGE_FS_ROOT
-        # Add other env vars from secret/configmap
+        # ── Sensitive secrets (Secret) ──────────────────────────────────────
+        - name: RAINLOGS_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: rainlogs-secret
+              key: RAINLOGS_JWT_SECRET
+        - name: RAINLOGS_KMS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rainlogs-secret
+              key: RAINLOGS_KMS_KEY
+        - name: RAINLOGS_S3_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: rainlogs-secret
+              key: RAINLOGS_S3_ACCESS_KEY_ID
+        - name: RAINLOGS_S3_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rainlogs-secret
+              key: RAINLOGS_S3_SECRET_ACCESS_KEY
+        - name: RAINLOGS_REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rainlogs-secret
+              key: REDIS_PASSWORD
+      volumes:
+      - name: migrations
+        configMap:
+          name: rainlogs-migrations
 ---
 apiVersion: v1
 kind: Service
@@ -95,7 +165,12 @@ kind: Deployment
 metadata:
   name: rainlogs-worker
   namespace: rainlogs
+  labels:
+    app: rainlogs-worker
+    version: v0.6.0
 spec:
+  # Keep at 1 replica: asynq workers are stateful queue consumers.
+  # Horizontal scaling requires task queue partitioning (planned v0.7.0).
   replicas: 1
   selector:
     matchLabels:
@@ -109,10 +184,61 @@ spec:
       - name: worker
         image: rainlogs-worker:latest
         imagePullPolicy: IfNotPresent
-        command: ["/rainlogs-worker"] 
+        command: ["/rainlogs-worker"]
+        ports:
+        - containerPort: 8081
+          name: health
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: "2"
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health/worker
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          failureThreshold: 3
         env:
+        # ── Non-sensitive config (ConfigMap) ────────────────────────────────
         - name: RAINLOGS_APP_ENV
-          value: "production"
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_APP_ENV
+        - name: RAINLOGS_DATABASE_DSN
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_DATABASE_DSN
+        - name: RAINLOGS_REDIS_ADDR
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_REDIS_ADDR
+        - name: RAINLOGS_S3_ENDPOINT
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_S3_ENDPOINT
+        - name: RAINLOGS_S3_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_S3_REGION
+        - name: RAINLOGS_S3_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_S3_BUCKET
+        - name: RAINLOGS_S3_FORCE_PATH_STYLE
+          valueFrom:
+            configMapKeyRef:
+              name: rainlogs-config
+              key: RAINLOGS_S3_FORCE_PATH_STYLE
         - name: RAINLOGS_STORAGE_BACKEND
           valueFrom:
             configMapKeyRef:
@@ -123,4 +249,32 @@ spec:
             configMapKeyRef:
               name: rainlogs-config
               key: RAINLOGS_STORAGE_FS_ROOT
-        # Add other env vars
+        # Scheduler: how often to check for zones due for a pull.
+        # Must be ≤ the smallest zone pull_interval_secs in your deployment.
+        - name: RAINLOGS_WORKER_SCHEDULER_INTERVAL
+          value: "1m"
+        - name: RAINLOGS_WORKER_CONCURRENCY
+          value: "10"
+        - name: RAINLOGS_WORKER_LOG_RETENTION_DAYS
+          value: "395"
+        # ── Sensitive secrets (Secret) ──────────────────────────────────────
+        - name: RAINLOGS_KMS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rainlogs-secret
+              key: RAINLOGS_KMS_KEY
+        - name: RAINLOGS_S3_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: rainlogs-secret
+              key: RAINLOGS_S3_ACCESS_KEY_ID
+        - name: RAINLOGS_S3_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: rainlogs-secret
+              key: RAINLOGS_S3_SECRET_ACCESS_KEY
+        - name: RAINLOGS_REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rainlogs-secret
+              key: REDIS_PASSWORD

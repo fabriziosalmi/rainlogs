@@ -1,0 +1,74 @@
+# ── Ingress for rainlogs-api ──────────────────────────────────────────────────
+#
+# Choose your Ingress controller by uncommenting the corresponding block below.
+# Only one block should be active at a time.
+#
+# Prerequisites:
+#   - cert-manager installed (https://cert-manager.io/docs/installation/)
+#   - A ClusterIssuer named "letsencrypt-prod" configured for your domain
+#   - Either nginx-ingress or Traefik deployed in your cluster
+#
+# Replace "rainlogs.example.com" with your actual domain.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Option A: nginx-ingress ───────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rainlogs-nginx
+  namespace: rainlogs
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # Remove the next line if you do NOT use cert-manager.
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - rainlogs.example.com          # ← replace with your domain
+    secretName: rainlogs-tls-nginx
+  rules:
+  - host: rainlogs.example.com      # ← replace with your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: rainlogs
+            port:
+              name: http
+
+---
+# ── Option B: Traefik ─────────────────────────────────────────────────────────
+# Uncomment this block and delete/comment the nginx block above.
+#
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: rainlogs-traefik
+#   namespace: rainlogs
+#   annotations:
+#     traefik.ingress.kubernetes.io/router.tls: "true"
+#     traefik.ingress.kubernetes.io/router.entrypoints: websecure
+#     # Remove the next line if you do NOT use cert-manager.
+#     cert-manager.io/cluster-issuer: letsencrypt-prod
+# spec:
+#   ingressClassName: traefik
+#   tls:
+#   - hosts:
+#     - rainlogs.example.com        # ← replace with your domain
+#     secretName: rainlogs-tls-traefik
+#   rules:
+#   - host: rainlogs.example.com    # ← replace with your domain
+#     http:
+#       paths:
+#       - path: /
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: rainlogs
+#             port:
+#               name: http
