@@ -25,3 +25,4 @@ docker/redis/
 docker/garage/data/
 docker/garage/meta/
 docs/node_modules/
+api

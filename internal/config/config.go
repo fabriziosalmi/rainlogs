@@ -127,7 +127,7 @@ func Load() (*Config, error) {
 	v.SetDefault("cloudflare.max_window_size", "1h")
 	v.SetDefault("kms.key", "")
 
-	v.SetDefault("worker.scheduler_interval", "5m")
+	v.SetDefault("worker.scheduler_interval", "1m")
 	v.SetDefault("worker.concurrency", 10)
 	v.SetDefault("worker.log_retention_days", 395) // ~13 months – beyond NIS2 minimum
 

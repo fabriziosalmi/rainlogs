@@ -244,21 +244,23 @@ func (p *LogExpireProcessor) ProcessTask(ctx context.Context, t *asynq.Task) err
 }
 
 type ZoneScheduler struct {
-	db    *db.DB
-	queue *asynq.Client
-	log   *zap.Logger
+	db       *db.DB
+	queue    *asynq.Client
+	log      *zap.Logger
+	interval time.Duration
 }
 
-func NewZoneScheduler(db *db.DB, queue *asynq.Client, log *zap.Logger) *ZoneScheduler {
+func NewZoneScheduler(db *db.DB, queue *asynq.Client, log *zap.Logger, interval time.Duration) *ZoneScheduler {
 	return &ZoneScheduler{
-		db:    db,
-		queue: queue,
-		log:   log,
+		db:       db,
+		queue:    queue,
+		log:      log,
+		interval: interval,
 	}
 }
 
 func (s *ZoneScheduler) Run(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
 	for {

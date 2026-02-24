@@ -90,7 +90,7 @@ func main() {
 	expireProcessor := worker.NewLogExpireProcessor(database, s3Client, log)
 
 	// 6. Start Scheduler
-	scheduler := worker.NewZoneScheduler(database, queueClient, log)
+	scheduler := worker.NewZoneScheduler(database, queueClient, log, cfg.Worker.SchedulerInterval)
 	go scheduler.Run(ctx)
 
 	// 7. Start Worker Server
