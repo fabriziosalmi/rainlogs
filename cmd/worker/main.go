@@ -111,11 +111,18 @@ func run() error {
 	defer queueClient.Close()
 
 	// 5. Init Notifier
-	notifier := &notifications.ConsoleNotifier{}
+	var notifier notifications.NotificationService = &notifications.ConsoleNotifier{}
+	if cfg.Notifications.SlackWebhookURL != "" {
+		notifier = notifications.NewSlackNotifier(cfg.Notifications.SlackWebhookURL)
+		appLog.Info("alerting configured", zap.String("backend", "slack"))
+	} else {
+		appLog.Info("alerting configured", zap.String("backend", "console"))
+	}
 
 	// 6. Init Processors
-	pullProcessor := worker.NewLogPullProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, appLog, notifier)
+	pullProcessor := worker.NewLogPullProcessor(database, kmsService, s3Client, queueClient, *cfg, appLog, notifier)
 	securityProcessor := worker.NewSecurityEventsProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, appLog, notifier)
+
 	verifyProcessor := worker.NewLogVerifyProcessor(database, s3Client, appLog)
 	expireProcessor := worker.NewLogExpireProcessor(database.LogJobs, s3Client, appLog)
 	exportProcessor := worker.NewLogExportProcessor(database, kmsService, s3Client, appLog, notifier)

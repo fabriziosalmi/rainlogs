@@ -16,6 +16,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -87,8 +88,15 @@ func (c *Client) PullLogs(ctx context.Context, from, to time.Time, fields []stri
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusTooManyRequests {
-		retryAfter := resp.Header.Get("Retry-After")
-		return nil, fmt.Errorf("%w (retry-after: %s)", ErrRateLimited, retryAfter)
+		retryAfterStr := resp.Header.Get("Retry-After")
+		delay := 30 * time.Second
+		if val, err := strconv.Atoi(retryAfterStr); err == nil {
+			delay = time.Duration(val) * time.Second
+		}
+		return nil, &RateLimitError{
+			Message:    "Cloudflare 429",
+			RetryAfter: delay,
+		}
 	}
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))

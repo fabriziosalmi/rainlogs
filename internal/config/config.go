@@ -10,16 +10,30 @@ import (
 
 // Config holds the full application configuration loaded from env / config file.
 type Config struct {
-	App         AppConfig        `mapstructure:"app"`
-	Database    DatabaseConfig   `mapstructure:"database"`
-	Redis       RedisConfig      `mapstructure:"redis"`
-	Storage     StorageConfig    `mapstructure:"storage"`
-	S3          S3Config         `mapstructure:"s3"`
-	S3Secondary S3Config         `mapstructure:"s3_secondary"`
-	JWT         JWTConfig        `mapstructure:"jwt"`
-	Cloudflare  CloudflareConfig `mapstructure:"cloudflare"`
-	Worker      WorkerConfig     `mapstructure:"worker"`
-	KMS         KMSConfig        `mapstructure:"kms"`
+	App           AppConfig          `mapstructure:"app"`
+	Database      DatabaseConfig     `mapstructure:"database"`
+	Redis         RedisConfig        `mapstructure:"redis"`
+	Storage       StorageConfig      `mapstructure:"storage"`
+	S3            S3Config           `mapstructure:"s3"`
+	S3Secondary   S3Config           `mapstructure:"s3_secondary"`
+	JWT           JWTConfig          `mapstructure:"jwt"`
+	Cloudflare    CloudflareConfig   `mapstructure:"cloudflare"`
+	Worker        WorkerConfig       `mapstructure:"worker"`
+	KMS           KMSConfig          `mapstructure:"kms"`
+	Notifications NotificationConfig `mapstructure:"notifications"`
+	RateLimits    RateLimitConfig    `mapstructure:"rate_limits"`
+}
+
+type RateLimitConfig struct {
+	// Reqs/5min defaults
+	Enterprise int `mapstructure:"enterprise"` // e.g. 1200
+	Business   int `mapstructure:"business"`   // e.g. 600
+	Pro        int `mapstructure:"pro"`        // e.g. 150
+	Free       int `mapstructure:"free"`       // e.g. 30
+}
+
+type NotificationConfig struct {
+	SlackWebhookURL string `mapstructure:"slack_webhook_url"`
 }
 
 type AppConfig struct {
@@ -127,6 +141,8 @@ func Load() (*Config, error) {
 	v.SetDefault("jwt.expiration", "24h")
 	v.SetDefault("jwt.secret", "")
 
+	v.SetDefault("notifications.slack_webhook_url", "")
+
 	v.SetDefault("cloudflare.base_url", "https://api.cloudflare.com/client/v4")
 	v.SetDefault("cloudflare.request_timeout", "30s")
 	v.SetDefault("cloudflare.max_window_size", "1h")
@@ -136,7 +152,13 @@ func Load() (*Config, error) {
 	v.SetDefault("worker.concurrency", 10)
 	v.SetDefault("worker.log_retention_days", 395) // ~13 months – beyond NIS2 minimum
 
+	v.SetDefault("rate_limits.enterprise", 1200) // 1200 reqs/5min (standard Ent)
+	v.SetDefault("rate_limits.business", 600)    // Safe guess
+	v.SetDefault("rate_limits.pro", 300)         // Safe guess
+	v.SetDefault("rate_limits.free", 150)        // Safe guess
+
 	// ---------- config file (optional) ----------
+
 	v.SetConfigName("rainlogs")
 	v.SetConfigType("yaml")
 	v.AddConfigPath(".")

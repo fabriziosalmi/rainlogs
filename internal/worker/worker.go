@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
-	"golang.org/x/time/rate"
 
 	"github.com/fabriziosalmi/rainlogs/internal/cloudflare"
 	"github.com/fabriziosalmi/rainlogs/internal/config"
@@ -32,24 +31,22 @@ type LogPullProcessor struct {
 	queue    *asynq.Client
 	cfCfg    config.CloudflareConfig
 	log      *zap.Logger
-	limiter  *rate.Limiter
 	notifier notifications.NotificationService
+
+	conf config.Config
 }
 
-func NewLogPullProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client, cfCfg config.CloudflareConfig, log *zap.Logger, notifier notifications.NotificationService) *LogPullProcessor {
-	var limiter *rate.Limiter
-	if cfCfg.RateLimit > 0 {
-		limiter = rate.NewLimiter(rate.Limit(cfCfg.RateLimit), 1)
-	}
+func NewLogPullProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client, cfg config.Config, log *zap.Logger, notifier notifications.NotificationService) *LogPullProcessor {
+	// Instead of a global limiter, we will use a per-plan strategy in ProcessTask
 	return &LogPullProcessor{
 		db:       db,
 		kms:      kms,
 		storage:  storage,
 		queue:    queue,
-		cfCfg:    cfCfg,
+		cfCfg:    cfg.Cloudflare,
 		log:      log,
-		limiter:  limiter,
 		notifier: notifier,
+		conf:     cfg,
 	}
 }
 
@@ -100,21 +97,47 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 	//
 
 	// 3. Decrypt CF API Key
-	cfKey, err := p.kms.Decrypt(customer.CFAPIKeyEnc)
+	// 3. Decrypt CF API Key
+	apiKey, err := p.kms.Decrypt(customer.CFAPIKeyEnc)
 	if err != nil {
 		return p.failJob(ctx, job, fmt.Errorf("decrypt cf key: %w", err))
 	}
 
-	// 4. Pull Logs from Cloudflare
-	if p.limiter != nil {
-		if err := p.limiter.Wait(ctx); err != nil {
-			return p.failJob(ctx, job, fmt.Errorf("rate limiter: %w", err))
-		}
+	// 4. Rate Limiting based on Plan
+	var waitTime time.Duration
+	// Basic delay based on plan tier to prevent flooding
+	switch zone.Plan {
+	case models.PlanEnterprise:
+		waitTime = 100 * time.Millisecond // ~10 reqs/sec max burst
+	case models.PlanBusiness:
+		waitTime = 500 * time.Millisecond // ~2 reqs/sec
+	default:
+		waitTime = 2 * time.Second // ~0.5 reqs/sec (Free/Pro)
 	}
 
-	cfClient := cloudflare.NewClient(p.cfCfg, zone.ZoneID, cfKey)
+	// Simple in-process delay to space out requests from this worker.
+	// Note: Cloudflare 429s are the real authority.
+	select {
+	case <-time.After(waitTime):
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	// 5. Pull Logs from Cloudflare
+	cfClient := cloudflare.NewClient(p.cfCfg, zone.ZoneID, apiKey)
 	logs, err := cfClient.PullLogs(ctx, payload.PeriodStart, payload.PeriodEnd, nil)
 	if err != nil {
+		// Check for rate limit error
+		var rlErr *cloudflare.RateLimitError
+		if errors.As(err, &rlErr) {
+			p.log.Warn("rate limit hit",
+				zap.String("zone", zone.Name),
+				zap.Duration("retry_after", rlErr.RetryAfter),
+			)
+			// Return the specific error type to be handled by retry logic
+			// For now, we wrap it to provide context
+			return fmt.Errorf("pull logs: %w", rlErr)
+		}
 		return p.failJob(ctx, job, fmt.Errorf("pull logs: %w", err))
 	}
 
@@ -122,7 +145,6 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 		job.Status = models.JobStatusDone
 		job.LogCount = 0
 		job.ByteCount = 0
-		// No S3 upload for empty windows – skip verify task (nothing to verify).
 		return p.db.LogJobs.Update(ctx, job)
 	}
 
