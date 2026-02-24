@@ -73,11 +73,11 @@ func DecompressBlob(r io.Reader) ([]byte, error) {
 }
 
 func countLines(b []byte) int {
-	len := 0
+	count := 0
 	for _, x := range b {
 		if x == '\n' {
-			len++
+			count++
 		}
 	}
-	return len
+	return count
 }

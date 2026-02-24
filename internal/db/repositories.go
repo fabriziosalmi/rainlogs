@@ -106,6 +106,20 @@ func (r *APIKeyRepository) Revoke(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+func (r *APIKeyRepository) GetByCustomerAndID(ctx context.Context, customerID, keyID uuid.UUID) (*models.APIKey, error) {
+	const q = `SELECT id,customer_id,prefix,key_hash,label,created_at,last_used_at,revoked_at
+		FROM api_keys WHERE customer_id=$1 AND id=$2`
+	k := &models.APIKey{}
+	err := r.db.QueryRow(ctx, q, customerID, keyID).Scan(
+		&k.ID, &k.CustomerID, &k.Prefix, &k.KeyHash, &k.Label,
+		&k.CreatedAt, &k.LastUsedAt, &k.RevokedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("api_key get: %w", err)
+	}
+	return k, nil
+}
+
 func (r *APIKeyRepository) ListByCustomer(ctx context.Context, customerID uuid.UUID) ([]*models.APIKey, error) {
 	const q = `SELECT id,customer_id,prefix,key_hash,label,created_at,last_used_at,revoked_at
 		FROM api_keys WHERE customer_id=$1 ORDER BY created_at DESC`

@@ -118,15 +118,16 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 		return fmt.Errorf("update job: %w", err)
 	}
 
-	// 8. Enqueue Verify Task – non-fatal but must be visible: a missing
-	// verification means the WORM integrity check is silently skipped.
+	// 8. Enqueue Verify Task. Creating the task structure is always expected
+	// to succeed; failure is a programming error and must stop processing.
+	// Enqueueing may fail transiently (Redis unavailable) – log at ERROR so
+	// operators are alerted; the upload is complete and data is not lost.
 	verifyTask, err := queue.NewLogVerifyTask(queue.LogVerifyPayload{JobID: job.ID})
 	if err != nil {
-		log.Printf("WARN: job %s: create verify task: %v (integrity check skipped)", job.ID, err)
-		return nil
+		return fmt.Errorf("job %s: create verify task: %w", job.ID, err)
 	}
 	if _, err := p.queue.EnqueueContext(ctx, verifyTask); err != nil {
-		log.Printf("WARN: job %s: enqueue verify task: %v (integrity check skipped)", job.ID, err)
+		log.Printf("ERROR: job %s: enqueue verify task: %v (WORM integrity check deferred)", job.ID, err)
 	}
 
 	return nil

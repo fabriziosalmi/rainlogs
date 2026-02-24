@@ -131,8 +131,9 @@ func (h *Handlers) CreateZone(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return apiErr(c, http.StatusBadRequest, "invalid request body")
 	}
-	if req.ZoneID == "" || req.Name == "" || req.PullIntervalSecs < 300 {
-		return apiErr(c, http.StatusBadRequest, "missing required fields or pull_interval_secs < 300")
+	const maxPullIntervalSecs = 518400 // 6 days – must stay below CF's 7-day log retention
+	if req.ZoneID == "" || req.Name == "" || req.PullIntervalSecs < 300 || req.PullIntervalSecs > maxPullIntervalSecs {
+		return apiErr(c, http.StatusBadRequest, "missing required fields or pull_interval_secs out of range [300, 518400]")
 	}
 
 	zone := &models.Zone{
@@ -313,19 +314,8 @@ func (h *Handlers) RevokeAPIKey(c echo.Context) error {
 		return apiErr(c, http.StatusBadRequest, "invalid key_id")
 	}
 
-	// Verify the key belongs to this customer
-	keys, err := h.db.APIKeys.ListByCustomer(c.Request().Context(), customerID)
-	if err != nil {
-		return apiErr(c, http.StatusInternalServerError, "database error")
-	}
-	found := false
-	for _, k := range keys {
-		if k.ID == keyID {
-			found = true
-			break
-		}
-	}
-	if !found {
+	// Verify the key belongs to this customer (single-row lookup).
+	if _, err := h.db.APIKeys.GetByCustomerAndID(c.Request().Context(), customerID, keyID); err != nil {
 		return apiErr(c, http.StatusNotFound, "api key not found")
 	}
 

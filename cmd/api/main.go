@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -62,9 +63,10 @@ func main() {
 	multiStore := storage.NewMultiStore(backend)
 
 	// 4. Init Queue client (for trigger-pull)
-	redisOpt, err := asynq.ParseRedisURI(cfg.Redis.Addr)
-	if err != nil {
-		log.Fatalf("failed to parse redis uri: %v", err)
+	redisOpt := asynq.RedisClientOpt{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
 	}
 	queueClient := asynq.NewClient(redisOpt)
 	defer queueClient.Close()
@@ -117,6 +119,15 @@ func main() {
 			overall = "degraded"
 		} else {
 			deps["postgres"] = depStatus{Status: "ok"}
+		}
+
+		conn, dialErr := (&net.Dialer{}).DialContext(pingCtx, "tcp", cfg.Redis.Addr)
+		if dialErr != nil {
+			deps["redis"] = depStatus{Status: "error", Error: dialErr.Error()}
+			overall = "degraded"
+		} else {
+			conn.Close()
+			deps["redis"] = depStatus{Status: "ok"}
 		}
 
 		status := http.StatusOK

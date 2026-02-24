@@ -148,7 +148,7 @@ services:
       RAINLOGS_APP_ENV: production
       RAINLOGS_APP_PORT: "8080"
       RAINLOGS_DATABASE_DSN: postgres://${POSTGRES_USER:-rainlogs}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-rainlogs}?pool_max_conns=25
-      RAINLOGS_REDIS_ADDR: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      RAINLOGS_REDIS_ADDR: redis:6379
       RAINLOGS_REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme}
       RAINLOGS_S3_ENDPOINT: ${S3_ENDPOINT:-http://garage:3900}
       RAINLOGS_S3_REGION: ${S3_REGION:-garage}
@@ -198,7 +198,7 @@ services:
     environment:
       RAINLOGS_APP_ENV: production
       RAINLOGS_DATABASE_DSN: postgres://${POSTGRES_USER:-rainlogs}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-rainlogs}?pool_max_conns=10
-      RAINLOGS_REDIS_ADDR: redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
+      RAINLOGS_REDIS_ADDR: redis:6379
       RAINLOGS_REDIS_PASSWORD: ${REDIS_PASSWORD:-changeme}
       RAINLOGS_S3_ENDPOINT: ${S3_ENDPOINT:-http://garage:3900}
       RAINLOGS_S3_REGION: ${S3_REGION:-garage}

@@ -61,9 +61,10 @@ func main() {
 	s3Client := storage.NewMultiStore(backend)
 
 	// 4. Init Queue
-	redisOpt, err := asynq.ParseRedisURI(cfg.Redis.Addr)
-	if err != nil {
-		log.Fatalf("failed to parse redis url: %v", err)
+	redisOpt := asynq.RedisClientOpt{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
 	}
 
 	queueClient := asynq.NewClient(redisOpt)
