@@ -87,8 +87,13 @@ func main() {
 
 	// 5. Init Processors
 	pullProcessor := worker.NewLogPullProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, log)
+	securityProcessor := worker.NewSecurityEventsProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, log)
 	verifyProcessor := worker.NewLogVerifyProcessor(database, s3Client, log)
 	expireProcessor := worker.NewLogExpireProcessor(database, s3Client, log)
+
+	// 5b. Init Instant Logs Daemon
+	instantLogsManager := worker.NewInstantLogsManager(database, kmsService, s3Client, cfg.Cloudflare, log)
+	go instantLogsManager.Start(ctx)
 
 	// 6. Start Scheduler
 	scheduler := worker.NewZoneScheduler(database, queueClient, log, cfg.Worker.SchedulerInterval)
@@ -109,6 +114,7 @@ func main() {
 
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(queue.TypeLogPull, pullProcessor.ProcessTask)
+	mux.HandleFunc(queue.TypeSecurityPoll, securityProcessor.ProcessTask)
 	mux.HandleFunc(queue.TypeLogVerify, verifyProcessor.ProcessTask)
 	mux.HandleFunc(queue.TypeLogExpire, expireProcessor.ProcessTask)
 

@@ -1,0 +1,1 @@
+ALTER TABLE zones ADD COLUMN plan VARCHAR(50) DEFAULT 'enterprise';

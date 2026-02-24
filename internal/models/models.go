@@ -42,12 +42,21 @@ type APIKey struct {
 	ExpiresAt  *time.Time `db:"expires_at"   json:"expires_at,omitempty"`
 }
 
+type PlanType string
+
+const (
+	PlanEnterprise PlanType = "enterprise"
+	PlanBusiness   PlanType = "business"
+	PlanFreePro    PlanType = "free_pro"
+)
+
 // Zone is a Cloudflare zone registered for a customer.
 type Zone struct {
 	ID               uuid.UUID  `db:"id"                 json:"id"`
 	CustomerID       uuid.UUID  `db:"customer_id"        json:"customer_id"`
 	ZoneID           string     `db:"zone_id"            json:"zone_id"`
 	Name             string     `db:"name"               json:"name"`
+	Plan             PlanType   `db:"plan"               json:"plan"`
 	PullIntervalSecs int        `db:"pull_interval_secs" json:"pull_interval_secs"`
 	LastPulledAt     *time.Time `db:"last_pulled_at"     json:"last_pulled_at,omitempty"`
 	Active           bool       `db:"active"             json:"active"`

@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	TypeLogPull   = "log:pull"
-	TypeLogVerify = "log:verify"
-	TypeLogExpire = "log:expire"
+	TypeLogPull      = "log:pull"
+	TypeSecurityPoll = "security:poll"
+	TypeLogVerify    = "log:verify"
+	TypeLogExpire    = "log:expire"
 
 	QueueCritical = "critical"
 	QueueDefault  = "default"
@@ -21,6 +22,14 @@ const (
 
 // LogPullPayload is the task payload for TypeLogPull.
 type LogPullPayload struct {
+	ZoneID      uuid.UUID `json:"zone_id"`
+	CustomerID  uuid.UUID `json:"customer_id"`
+	PeriodStart time.Time `json:"period_start"`
+	PeriodEnd   time.Time `json:"period_end"`
+}
+
+// SecurityPollPayload is the task payload for TypeSecurityPoll.
+type SecurityPollPayload struct {
 	ZoneID      uuid.UUID `json:"zone_id"`
 	CustomerID  uuid.UUID `json:"customer_id"`
 	PeriodStart time.Time `json:"period_start"`
@@ -41,9 +50,18 @@ type LogExpirePayload struct {
 func NewLogPullTask(p LogPullPayload) (*asynq.Task, error) {
 	b, err := json.Marshal(p)
 	if err != nil {
-		return nil, fmt.Errorf("queue: marshal LogPull: %w", err)
+		return nil, fmt.Errorf("marshal LogPull: %w", err)
 	}
 	return asynq.NewTask(TypeLogPull, b, asynq.Queue(QueueDefault)), nil
+}
+
+func NewSecurityPollTask(p SecurityPollPayload) (*asynq.Task, error) {
+	b, err := json.Marshal(p)
+	if err != nil {
+		return nil, fmt.Errorf("marshal SecurityPoll: %w", err)
+	}
+	// Use QueueDefault or separate queue? Default is fine.
+	return asynq.NewTask(TypeSecurityPoll, b, asynq.Queue(QueueDefault)), nil
 }
 
 func NewLogVerifyTask(p LogVerifyPayload) (*asynq.Task, error) {
@@ -64,6 +82,12 @@ func NewLogExpireTask(p LogExpirePayload) (*asynq.Task, error) {
 
 func ParseLogPullPayload(t *asynq.Task) (LogPullPayload, error) {
 	var p LogPullPayload
+	err := json.Unmarshal(t.Payload(), &p)
+	return p, err
+}
+
+func ParseSecurityPollPayload(t *asynq.Task) (SecurityPollPayload, error) {
+	var p SecurityPollPayload
 	err := json.Unmarshal(t.Payload(), &p)
 	return p, err
 }

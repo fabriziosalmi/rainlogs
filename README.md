@@ -2,9 +2,17 @@
 
 > Cloudflare log archiving for NIS2-compliant European businesses.
 
-RainLogs collects logs from Cloudflare zones via the **Logpull API** and stores them in **EU-sovereign object storage** (Garage S3-compatible, Hetzner, Contabo) with **WORM integrity guarantees** suitable for NIS2 / D.Lgs. 138/2024 incident forensics.
+RainLogs collects logs from Cloudflare zones and stores them in **EU-sovereign object storage** (Garage S3-compatible, Hetzner, Contabo) with **WORM integrity guarantees** suitable for NIS2 / D.Lgs. 138/2024 incident forensics.
 
-**Important Note:** The Cloudflare Logpull API (`GET /zones/:id/logs/received`) requires an **Enterprise** plan. If you are on a Free, Pro, or Business plan, this tool will likely receive `403 Forbidden` errors from Cloudflare.
+## Supported Plans
+
+RainLogs adapts its collection strategy based on your Cloudflare plan:
+
+| Plan | Method | Data Type | Notes |
+|---|---|---|---|
+| **Enterprise** | **Logpull API** | Full Access Logs | Historical backfill supported (7 days). |
+| **Business** | **Instant Logs** (WebSocket) | Full Access Logs | Real-time stream only. No historical backfill. |
+| **Pro / Free** | **Security Poller** (GraphQL) | Security Events (WAF) | Logs blocked requests only. No legitimate traffic logs. |
 
 [![CI](https://github.com/fabriziosalmi/rainlogs/actions/workflows/ci.yml/badge.svg)](https://github.com/fabriziosalmi/rainlogs/actions/workflows/ci.yml)
 [![Go 1.24](https://img.shields.io/badge/go-1.24-blue)](https://go.dev)

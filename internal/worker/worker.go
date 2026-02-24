@@ -119,7 +119,7 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 	chainHash := worm.ChainHash(prevChainHash, hashStr, job.ID.String())
 
 	// 6. Upload to S3
-	s3Key, s3HashStr, provider, byteCount, logCount, err := p.storage.PutLogs(ctx, customer.ID, zone.ID, payload.PeriodStart, payload.PeriodEnd, logs)
+	s3Key, s3HashStr, provider, byteCount, logCount, err := p.storage.PutLogs(ctx, customer.ID, zone.ID, payload.PeriodStart, payload.PeriodEnd, logs, "logs")
 	if err != nil {
 		return p.failJob(ctx, job, fmt.Errorf("s3 upload: %w", err))
 	}
@@ -312,20 +312,62 @@ func (s *ZoneScheduler) schedule(ctx context.Context) {
 			start = *zone.LastPulledAt
 		}
 
-		task, err := queue.NewLogPullTask(queue.LogPullPayload{
-			ZoneID:      zone.ID,
-			CustomerID:  zone.CustomerID,
-			PeriodStart: start,
-			PeriodEnd:   now,
-		})
-		if err != nil {
-			s.log.Error("scheduler: create task", zap.String("zone_id", zone.ID.String()), zap.Error(err))
+		var task *asynq.Task
+		var taskID string
+
+		// Dispatch based on plan type
+		switch zone.Plan {
+		case models.PlanEnterprise:
+			// Default LogPull behavior
+			t, err := queue.NewLogPullTask(queue.LogPullPayload{
+				ZoneID:      zone.ID,
+				CustomerID:  zone.CustomerID,
+				PeriodStart: start,
+				PeriodEnd:   now,
+			})
+			if err != nil {
+				s.log.Error("scheduler: create log pull task", zap.String("zone_id", zone.ID.String()), zap.Error(err))
+				continue
+			}
+			task = t
+			taskID = fmt.Sprintf("pull-%s-%d", zone.ID, start.Unix())
+
+		case models.PlanFreePro:
+			// Security Events Poller
+			t, err := queue.NewSecurityPollTask(queue.SecurityPollPayload{
+				ZoneID:      zone.ID,
+				CustomerID:  zone.CustomerID,
+				PeriodStart: start,
+				PeriodEnd:   now,
+			})
+			if err != nil {
+				s.log.Error("scheduler: create security poll task", zap.String("zone_id", zone.ID.String()), zap.Error(err))
+				continue
+			}
+			task = t
+			taskID = fmt.Sprintf("sec-%s-%d", zone.ID, start.Unix())
+
+		case models.PlanBusiness:
+			// Instant Logs - Handled by daemon, skip scheduler
+			// TODO: Implement health check for Instant Logs Daemon
 			continue
+
+		default:
+			// Default to Enterprise logic if not specified (backward compatibility)
+			t, err := queue.NewLogPullTask(queue.LogPullPayload{
+				ZoneID:      zone.ID,
+				CustomerID:  zone.CustomerID,
+				PeriodStart: start,
+				PeriodEnd:   now,
+			})
+			if err != nil {
+				s.log.Error("scheduler: create fallback task", zap.String("zone_id", zone.ID.String()), zap.Error(err))
+				continue
+			}
+			task = t
+			taskID = fmt.Sprintf("pull-%s-%d", zone.ID, start.Unix())
 		}
 
-		// Use a deterministic task ID to prevent duplicate enqueues if
-		// UpdateLastPulled fails and the scheduler retries the same window.
-		taskID := fmt.Sprintf("pull-%s-%d", zone.ID, start.Unix())
 		_, err = s.queue.EnqueueContext(ctx, task, asynq.TaskID(taskID))
 		if err != nil {
 			if errors.Is(err, asynq.ErrTaskIDConflict) || errors.Is(err, asynq.ErrDuplicateTask) {

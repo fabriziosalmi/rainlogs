@@ -20,7 +20,7 @@ type BlobMetadata struct {
 }
 
 // PrepareBlob compresses, hashes, and generates a key for raw log data.
-func PrepareBlob(raw []byte, customerID, zoneID uuid.UUID, from, to time.Time) ([]byte, BlobMetadata, error) {
+func PrepareBlob(raw []byte, customerID, zoneID uuid.UUID, from, to time.Time, logType string) ([]byte, BlobMetadata, error) {
 	lines := int64(countLines(raw))
 
 	// Compress
@@ -40,8 +40,13 @@ func PrepareBlob(raw []byte, customerID, zoneID uuid.UUID, from, to time.Time) (
 	sum := sha256.Sum256(compressed)
 	sha256hex := hex.EncodeToString(sum[:])
 
-	// Key: logs/<customer>/<zone>/<YYYY>/<MM>/<DD>/<from>_<to>_<sha[:8]>.ndjson.gz
-	key := fmt.Sprintf("logs/%s/%s/%s/%s_%s_%s.ndjson.gz",
+	if logType == "" {
+		logType = "logs"
+	}
+
+	// Key: <type>/<customer>/<zone>/<YYYY>/<MM>/<DD>/<from>_<to>_<sha[:8]>.ndjson.gz
+	key := fmt.Sprintf("%s/%s/%s/%s/%s_%s_%s.ndjson.gz",
+		logType,
 		customerID,
 		zoneID,
 		from.UTC().Format("2006/01/02"),

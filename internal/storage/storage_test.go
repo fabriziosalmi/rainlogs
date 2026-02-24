@@ -29,7 +29,7 @@ func TestFSStore(t *testing.T) {
 	rawLogs := []byte("{\"event\":\"test1\"}\n{\"event\":\"test2\"}\n")
 
 	// Test PutLogs
-	key, sha256hex, size, lines, err := store.PutLogs(ctx, customerID, zoneID, now, now.Add(time.Second), rawLogs)
+	key, sha256hex, size, lines, err := store.PutLogs(ctx, customerID, zoneID, now, now.Add(time.Second), rawLogs, "logs")
 	if err != nil {
 		t.Fatalf("PutLogs failed: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestPrepareBlob(t *testing.T) {
 	start := time.Now()
 	end := start.Add(time.Minute)
 
-	compressed, meta, err := PrepareBlob(raw, cid, zid, start, end)
+	compressed, meta, err := PrepareBlob(raw, cid, zid, start, end, "logs")
 	if err != nil {
 		t.Fatal(err)
 	}

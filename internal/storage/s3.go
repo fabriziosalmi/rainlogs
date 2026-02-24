@@ -80,8 +80,8 @@ func (s *Store) Provider() string { return s.provider }
 // PutLogs compresses raw NDJSON bytes and uploads to S3.
 // Returns: S3 key, SHA-256 hex of compressed bytes, compressed byte count, log line count.
 // Uses a deterministic key so duplicate uploads are idempotent.
-func (s *Store) PutLogs(ctx context.Context, customerID, zoneID uuid.UUID, from, to time.Time, raw []byte) (key, sha256hex string, compressedBytes, logLines int64, err error) {
-	compressed, meta, err := PrepareBlob(raw, customerID, zoneID, from, to)
+func (s *Store) PutLogs(ctx context.Context, customerID, zoneID uuid.UUID, from, to time.Time, raw []byte, logType string) (key, sha256hex string, compressedBytes, logLines int64, err error) {
+	compressed, meta, err := PrepareBlob(raw, customerID, zoneID, from, to, logType)
 	if err != nil {
 		return "", "", 0, 0, err
 	}
@@ -142,11 +142,11 @@ func NewMultiStore(providers ...Backend) *MultiStore {
 // Returns the winning provider label alongside the object metadata.
 //
 //nolint:gocritic // tooManyResultsChecker: interface contract requires 6 return values
-func (m *MultiStore) PutLogs(ctx context.Context, customerID, zoneID uuid.UUID, from, to time.Time, raw []byte) (key, sha256hex, provider string, compressedBytes, logLines int64, err error) {
+func (m *MultiStore) PutLogs(ctx context.Context, customerID, zoneID uuid.UUID, from, to time.Time, raw []byte, logType string) (key, sha256hex, provider string, compressedBytes, logLines int64, err error) {
 	for _, p := range m.providers {
 		var k, h string
 		var cb, ll int64
-		k, h, cb, ll, err = p.PutLogs(ctx, customerID, zoneID, from, to, raw)
+		k, h, cb, ll, err = p.PutLogs(ctx, customerID, zoneID, from, to, raw, logType)
 		if err == nil {
 			return k, h, p.Provider(), cb, ll, nil
 		}

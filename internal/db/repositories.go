@@ -169,18 +169,21 @@ func NewZoneRepository(db *pgxpool.Pool) *ZoneRepository {
 }
 
 func (r *ZoneRepository) Create(ctx context.Context, z *models.Zone) error {
-	const q = `INSERT INTO zones(id,customer_id,zone_id,name,pull_interval_secs,active,created_at)
-		VALUES($1,$2,$3,$4,$5,$6,now()) RETURNING created_at`
+	const q = `INSERT INTO zones(id,customer_id,zone_id,name,plan,pull_interval_secs,last_pulled_at,active,created_at)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()) RETURNING created_at`
+	if z.Plan == "" {
+		z.Plan = models.PlanEnterprise
+	}
 	return r.db.QueryRow(ctx, q,
-		z.ID, z.CustomerID, z.ZoneID, z.Name, z.PullIntervalSecs, z.Active,
+		z.ID, z.CustomerID, z.ZoneID, z.Name, z.Plan, z.PullIntervalSecs, z.LastPulledAt, z.Active,
 	).Scan(&z.CreatedAt)
 }
 
 func (r *ZoneRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Zone, error) {
-	const q = `SELECT id,customer_id,zone_id,name,pull_interval_secs,last_pulled_at,active,created_at
+	const q = `SELECT id,customer_id,zone_id,name,plan,pull_interval_secs,last_pulled_at,active,created_at
 		FROM zones WHERE id=$1 AND deleted_at IS NULL`
 	z := &models.Zone{}
-	err := r.db.QueryRow(ctx, q, id).Scan(&z.ID, &z.CustomerID, &z.ZoneID, &z.Name,
+	err := r.db.QueryRow(ctx, q, id).Scan(&z.ID, &z.CustomerID, &z.ZoneID, &z.Name, &z.Plan,
 		&z.PullIntervalSecs, &z.LastPulledAt, &z.Active, &z.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("zone get: %w", err)
@@ -189,13 +192,13 @@ func (r *ZoneRepository) GetByID(ctx context.Context, id uuid.UUID) (*models.Zon
 }
 
 func (r *ZoneRepository) ListByCustomer(ctx context.Context, customerID uuid.UUID) ([]*models.Zone, error) {
-	const q = `SELECT id,customer_id,zone_id,name,pull_interval_secs,last_pulled_at,active,created_at
+	const q = `SELECT id,customer_id,zone_id,name,plan,pull_interval_secs,last_pulled_at,active,created_at
 		FROM zones WHERE customer_id=$1 AND deleted_at IS NULL`
 	return r.scanZones(ctx, q, customerID)
 }
 
 func (r *ZoneRepository) ListDue(ctx context.Context) ([]*models.Zone, error) {
-	const q = `SELECT id,customer_id,zone_id,name,pull_interval_secs,last_pulled_at,active,created_at
+	const q = `SELECT id,customer_id,zone_id,name,plan,pull_interval_secs,last_pulled_at,active,created_at
 		FROM zones
 		WHERE active=true
 		  AND deleted_at IS NULL
@@ -247,7 +250,7 @@ func (r *ZoneRepository) scanZones(ctx context.Context, q string, args ...interf
 	var out []*models.Zone
 	for rows.Next() {
 		z := &models.Zone{}
-		if err := rows.Scan(&z.ID, &z.CustomerID, &z.ZoneID, &z.Name,
+		if err := rows.Scan(&z.ID, &z.CustomerID, &z.ZoneID, &z.Name, &z.Plan,
 			&z.PullIntervalSecs, &z.LastPulledAt, &z.Active, &z.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -437,4 +440,12 @@ func (r *AuditEventRepository) ListByCustomer(ctx context.Context, customerID uu
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// ListActive returns all active zones.
+func (r *ZoneRepository) ListActive(ctx context.Context) ([]*models.Zone, error) {
+	const q = `SELECT id,customer_id,zone_id,name,plan,pull_interval_secs,last_pulled_at,active,created_at
+		FROM zones
+		WHERE active = true AND deleted_at IS NULL`
+	return r.scanZones(ctx, q)
 }

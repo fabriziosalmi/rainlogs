@@ -37,7 +37,7 @@ func (s *FSStore) Provider() string {
 	return s.provider
 }
 
-func (s *FSStore) PutLogs(_ context.Context, customerID, zoneID uuid.UUID, from, to time.Time, raw []byte) (key, sha256hex string, compressedBytes, logLines int64, err error) {
+func (s *FSStore) PutLogs(_ context.Context, customerID, zoneID uuid.UUID, from, to time.Time, raw []byte, logType string) (key, sha256hex string, compressedBytes, logLines int64, err error) {
 	// Re-use logic for compression/hashing/key generation from common helpers?
 	// For now, let's duplicate the non-AWS logic to keep it independent,
 	// or ideally refactor S3 logic to share "blob preparation".
@@ -49,7 +49,7 @@ func (s *FSStore) PutLogs(_ context.Context, customerID, zoneID uuid.UUID, from,
 
 	// Actually, let's call the helper to compress and hash.
 	// We'll define `PrepareBlob` in `common.go` next.
-	blob, meta, err := PrepareBlob(raw, customerID, zoneID, from, to)
+	blob, meta, err := PrepareBlob(raw, customerID, zoneID, from, to, logType)
 	if err != nil {
 		return "", "", 0, 0, err
 	}
