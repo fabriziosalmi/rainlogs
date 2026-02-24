@@ -181,6 +181,15 @@ See the [full API reference](docs/guide/api-reference.md) for request/response s
 
 ---
 
+## Roadmap
+
+- [ ] Log search API (query by IP, ray ID, time range)
+- [ ] OpenAPI / Swagger docs
+- [ ] NIS2 incident report export (PDF summary of events in window)
+- [x] Asynq monitoring integration (Asynqmon)
+
+---
+
 ## Development
 
 ```bash
