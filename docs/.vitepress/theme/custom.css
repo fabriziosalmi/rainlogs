@@ -99,6 +99,36 @@ body {
 }
 
 .dark .vp-home-hero-name {
+  background: -webkit-linear-gradient(120deg, #38bdf8 30%, #c084fc) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+/* Fix Table Readability on Gradient Backgrounds */
+.vp-doc table {
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  overflow: hidden;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.vp-doc table tr {
+  background-color: transparent;
+}
+
+.vp-doc table tr:nth-child(2n) {
+  background-color: rgba(241, 245, 249, 0.5); /* Slate-100 with opacity */
+}
+
+.dark .vp-doc table {
+  background-color: rgba(30, 41, 59, 0.8); /* Dark Slate background */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dark .vp-doc table tr:nth-child(2n) {
+  background-color: rgba(15, 23, 42, 0.3); /* Darker for stripes */
+}
   background: -webkit-linear-gradient(120deg, #7dd3fc 30%, #60a5fa) !important;
   -webkit-background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
