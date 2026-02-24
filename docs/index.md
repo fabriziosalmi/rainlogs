@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: "RainLogs"
-  text: "Cloudflare Log Archiving & Compliance"
+  text: "Log Archiving & Compliance"
   tagline: "High-performance, EU-sovereign log retention for NIS2 requirements."
   image:
     src: /logo.svg
