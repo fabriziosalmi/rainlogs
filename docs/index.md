@@ -5,6 +5,9 @@ hero:
   name: "Rainlogs"
   text: "High-performance log management"
   tagline: "Self-hosted, zero-config, EU-sovereign log storage and analysis."
+  image:
+    src: /logo.svg
+    alt: Rainlogs Logo
   actions:
     - theme: brand
       text: Get Started

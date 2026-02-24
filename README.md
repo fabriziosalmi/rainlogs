@@ -1,6 +1,12 @@
-# RainLogs
-
-> Cloudflare log archiving for NIS2-compliant European businesses.
+<div align="center">
+  <a href="https://fabriziosalmi.github.io/rainlogs/">
+    <img src="docs/public/logo.svg" alt="RainLogs Logo" width="120" height="auto" />
+  </a>
+  <h1>RainLogs</h1>
+  <p>
+    <b>Cloudflare log archiving for NIS2-compliant European businesses.</b>
+  </p>
+</div>
 
 RainLogs collects logs from Cloudflare zones and stores them in **EU-sovereign object storage** (Garage S3-compatible, Hetzner, Contabo) with **WORM integrity guarantees** suitable for NIS2 / D.Lgs. 138/2024 incident forensics.
 
@@ -52,38 +58,26 @@ RainLogs adapts its collection strategy based on your Cloudflare plan:
 
 ## Architecture
 
-```
-                      ┌──────────────────────┐
-                      │      Cloudflare      │
-                      │ (Logpull/Instant/WAF)│
-                      └──────────┬───────────┘
-                                 │ HTTPS / WSS
-                                 ▼
-                      ┌─────────────────────┐
-                      │   rainlogs-worker   │◄── Redis (asynq)
-                      │  (zone scheduler    │
-                      │   + task processor) │
-                      └──────────┬──────────┘
-                                 │ compress + SHA-256 + WORM chain
-                                 ▼
-              ┌─────────────────────────────────┐
-              │  S3-compatible EU object store  │
-              │  (Garage dev / Hetzner prod)    │
-              │  Key: logs/<zone>/<Y/M/D/H>/uuid│
-              └────────────────┬────────────────┘
-                               │ metadata + hash chain
-                               ▼
-                    ┌─────────────────────┐
-                    │     PostgreSQL      │
-                    │  customers zones    │
-                    │  log_jobs log_objects│
-                    └──────────┬──────────┘
-                               │ REST API
-                               ▼
-                    ┌─────────────────────┐
-                    │  rainlogs-api       │◄── Bearer API Key / JWT
-                    │  (Echo HTTP server) │    Rate-limited · WORM headers
-                    └─────────────────────┘
+```mermaid
+flowchart TD
+    CF[Cloudflare<br/>Logpull / Instant / WAF] -->|HTTPS / WSS| Worker[rainlogs-worker<br/>Zone Scheduler + Task Processor]
+    Redis[(Redis<br/>Asynq)] -.-> Worker
+    Worker -->|Compress + SHA-256 + WORM chain| S3[S3-compatible EU Object Store<br/>Garage dev / Hetzner prod]
+    
+    subgraph Storage [Data Persistence]
+        direction TB
+        S3 -->|Metadata + Hash Chain| DB[(PostgreSQL<br/>Customers, Zones, Logs)]
+    end
+
+    DB -->|REST API| API[rainlogs-api<br/>Echo HTTP Server]
+    
+    User[User / Dashboard] -->|Bearer API Key / JWT| API
+    
+    style CF fill:#f9f,stroke:#333,stroke-width:2px
+    style Worker fill:#bbf,stroke:#333,stroke-width:2px
+    style S3 fill:#dfd,stroke:#333,stroke-width:2px
+    style DB fill:#ff9,stroke:#333,stroke-width:2px
+    style API fill:#bbf,stroke:#333,stroke-width:2px
 ```
 
 ### Key Components

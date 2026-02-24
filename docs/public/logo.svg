@@ -1,0 +1,41 @@
+<svg width="300" height="150" viewBox="0 0 300 150" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-opacity="0.1"/>
+    </filter>
+    <linearGradient id="grad2xx" x1="15" y1="0" x2="85" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8"/> <!-- Sky Blue -->
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+    <linearGradient id="grad4xx" x1="115" y1="20" x2="185" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#fbbf24"/> <!-- Amber -->
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="grad5xx" x1="215" y1="40" x2="285" y2="140" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f87171"/> <!-- Red -->
+      <stop offset="100%" stop-color="#dc2626"/>
+    </linearGradient>
+    <style>
+      .drop { filter: url(#shadow); }
+      .code { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-weight: 700; font-size: 16px; fill: white; text-anchor: middle; dominant-baseline: middle; letter-spacing: 0.5px; opacity: 0.95; }
+    </style>
+  </defs>
+
+  <!-- 2xx Drop -->
+  <g transform="translate(0, 0)">
+    <path d="M50 10 C 50 10, 20 60, 20 80 C 20 96.5, 33.5 110, 50 110 C 66.5 110, 80 96.5, 80 80 C 80 60, 50 10, 50 10 Z" fill="url(#grad2xx)" class="drop"/>
+    <text x="50" y="82" class="code">2xx</text>
+  </g>
+
+  <!-- 4xx Drop (staggered down) -->
+  <g transform="translate(100, 20)">
+    <path d="M50 10 C 50 10, 20 60, 20 80 C 20 96.5, 33.5 110, 50 110 C 66.5 110, 80 96.5, 80 80 C 80 60, 50 10, 50 10 Z" fill="url(#grad4xx)" class="drop"/>
+    <text x="50" y="82" class="code">4xx</text>
+  </g>
+
+  <!-- 5xx Drop (staggered further down) -->
+  <g transform="translate(200, 40)">
+    <path d="M50 10 C 50 10, 20 60, 20 80 C 20 96.5, 33.5 110, 50 110 C 66.5 110, 80 96.5, 80 80 C 80 60, 50 10, 50 10 Z" fill="url(#grad5xx)" class="drop"/>
+    <text x="50" y="82" class="code">5xx</text>
+  </g>
+</svg>

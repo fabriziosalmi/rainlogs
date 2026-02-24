@@ -5,6 +5,7 @@ export default defineConfig({
   description: "High-performance, self-hosted log management system",
   base: '/rainlogs/',
   themeConfig: {
+    logo: '/logo.svg',
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/guide/introduction' },

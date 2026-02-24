@@ -1,0 +1,104 @@
+/* Override VitePress background variables to let the gradient shine through */
+:root {
+  --vp-c-bg: transparent !important;
+  --vp-c-bg-alt: rgba(255, 255, 255, 0.5) !important; /* Slightly distinct for code/alt blocks */
+}
+
+.dark {
+  --vp-c-bg: transparent !important;
+  --vp-c-bg-alt: rgba(0, 0, 0, 0.2) !important;
+}
+
+body {
+  /* 
+     "Layered Cloud Bank" Header 
+     We use multiple radial gradients to create a convex "cloudy" edge 
+     at the bottom of the top gray block.
+  */
+  background-color: #bae6fd; /* Fallback */
+  
+  /* 
+     Enhanced "Cloud Bank" Gradient
+     1. Top layer: Distinct "cloud white" that starts solid and fades out.
+     2. Middle layer: A transitionary grey-blue to give the clouds volume.
+     3. Bottom layer: The vibrant Euro-Azure sky.
+  */
+  background-image: 
+    linear-gradient(180deg, #ffffff 0%, #f1f5f9 15%, rgba(255, 255, 255, 0) 50%), /* Bright White tops, fading down */
+    linear-gradient(180deg, #cbd5e1 0%, rgba(203, 213, 225, 0) 30%), /* Subtle grey shadow for volume at top */
+    linear-gradient(180deg, #e0f2fe 30%, #38bdf8 100%); /* Stronger Sky Blue bottom */
+    
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+.dark body {
+  background-color: #0f172a;
+  
+  /* 
+     Dark Mode "Storm Front"
+     1. Top: Definite Slate Grey (Clouds)
+     2. Bottom: Deep Night Blue
+  */
+  background-image: 
+    linear-gradient(180deg, #334155 0%, #1e293b 20%, rgba(15, 23, 42, 0) 60%), /* Visible Slate Clouds */
+    linear-gradient(180deg, #0f172a 0%, #172554 100%); /* Deep Blue Night Sky */
+}
+
+/* Improve Card Contrast on Blue Background */
+.VPFeature {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.dark .VPFeature {
+  background-color: rgba(30, 41, 59, 0.7) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Fix Footer Visibility */
+.VPFooter {
+  background-color: transparent !important;
+}
+.VPFooter .message,
+.VPFooter .copyright {
+  color: #1e3a8a !important; /* Dark Blue text for contrast in light mode */
+  font-weight: 500;
+}
+.dark .VPFooter .message,
+.dark .VPFooter .copyright {
+  color: #94a3b8 !important; /* Slate 400 for dark mode */
+}
+
+/* Ensure navbar and sidebar are readable on top of gradient */
+.VPNav, .VPSidebar {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  background-color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.dark .VPNav, .dark .VPSidebar {
+  background-color: rgba(15, 23, 42, 0.7) !important;
+}
+
+/* Refined typography integration */
+.vp-doc h1, .vp-doc h2, .vp-doc h3 {
+  letter-spacing: -0.02em;
+}
+
+/* Enhance the hero text gradient for consistency */
+.vp-home-hero-name {
+  background: -webkit-linear-gradient(120deg, #38bdf8 30%, #2563eb) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+.dark .vp-home-hero-name {
+  background: -webkit-linear-gradient(120deg, #7dd3fc 30%, #60a5fa) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
