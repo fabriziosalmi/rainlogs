@@ -14,7 +14,7 @@ Rainlogs is designed to be easily deployed using Docker Compose. This guide cove
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/your-org/rainlogs.git
+   git clone https://github.com/fabriziosalmi/rainlogs.git
    cd rainlogs
    ```
 

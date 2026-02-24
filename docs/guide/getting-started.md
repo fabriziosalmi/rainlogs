@@ -15,7 +15,7 @@ The easiest way to get Rainlogs running is via the provided `docker-compose.yml`
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/your-org/rainlogs.git
+   git clone https://github.com/fabriziosalmi/rainlogs.git
    cd rainlogs
    ```
 
