@@ -28,16 +28,16 @@ import (
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	cfg, err := config.Load()
 	if err != nil {
+		cancel()
 		fmt.Printf("failed to load config: %v\n", err)
 		os.Exit(1)
 	}
 
 	log := logger.Must(cfg.App.Env)
-	defer log.Sync() //nolint:errcheck
+	defer log.Sync() //nolint:errcheck // zap.Logger.Sync error is safe to ignore in main
 
 	// 1. Init DB
 	database, err := db.Connect(ctx, cfg.Database)
@@ -173,6 +173,7 @@ func main() {
 	<-quit
 
 	log.Info("shutting down API server...")
+	cancel()
 	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelShutdown()
 

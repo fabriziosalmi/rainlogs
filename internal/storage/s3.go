@@ -140,6 +140,8 @@ func NewMultiStore(providers ...Backend) *MultiStore {
 
 // PutLogs uploads to the first available provider.
 // Returns the winning provider label alongside the object metadata.
+//
+//nolint:gocritic // tooManyResultsChecker: interface contract requires 6 return values
 func (m *MultiStore) PutLogs(ctx context.Context, customerID, zoneID uuid.UUID, from, to time.Time, raw []byte) (key, sha256hex, provider string, compressedBytes, logLines int64, err error) {
 	for _, p := range m.providers {
 		var k, h string

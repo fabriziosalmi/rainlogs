@@ -620,7 +620,7 @@ func (h *Handlers) DownloadLogs(c echo.Context) error {
 		job.PeriodEnd.UTC().Format("20060102T150405Z"),
 	)
 
-	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
 	c.Response().Header().Set("X-SHA256", job.SHA256)
 	c.Response().Header().Set("X-Chain-Hash", job.ChainHash)
 	return c.Blob(http.StatusOK, "application/x-ndjson", data)

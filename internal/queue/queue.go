@@ -64,15 +64,18 @@ func NewLogExpireTask(p LogExpirePayload) (*asynq.Task, error) {
 
 func ParseLogPullPayload(t *asynq.Task) (LogPullPayload, error) {
 	var p LogPullPayload
-	return p, json.Unmarshal(t.Payload(), &p)
+	err := json.Unmarshal(t.Payload(), &p)
+	return p, err
 }
 
 func ParseLogVerifyPayload(t *asynq.Task) (LogVerifyPayload, error) {
 	var p LogVerifyPayload
-	return p, json.Unmarshal(t.Payload(), &p)
+	err := json.Unmarshal(t.Payload(), &p)
+	return p, err
 }
 
 func ParseLogExpirePayload(t *asynq.Task) (LogExpirePayload, error) {
 	var p LogExpirePayload
-	return p, json.Unmarshal(t.Payload(), &p)
+	err := json.Unmarshal(t.Payload(), &p)
+	return p, err
 }

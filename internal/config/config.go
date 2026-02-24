@@ -88,7 +88,7 @@ type KMSConfig struct {
 
 // Load reads configuration from environment variables and optional config file.
 // Environment variable prefix: RAINLOGS_
-// Example: RAINLOGS_APP_PORT=8080
+// Example: RAINLOGS_APP_PORT=8080.
 func Load() (*Config, error) {
 	v := viper.New()
 

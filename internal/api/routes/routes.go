@@ -22,7 +22,7 @@ func Register(e *echo.Echo, database *db.DB, kms *kms.Encryptor, jwtSecret strin
 	api.Use(middleware.CustomerRateLimit(30, 60)) // 30 req/s, burst 60 per customer
 	api.Use(middleware.AuditLog(database.AuditEvents))
 
-	api.GET("/customers/:id", h.GetCustomer)    // own record only
+	api.GET("/customers/:id", h.GetCustomer)       // own record only
 	api.DELETE("/customers/:id", h.DeleteCustomer) // GDPR Art. 17 – right to erasure
 
 	api.POST("/zones", h.CreateZone)
@@ -49,7 +49,7 @@ func Register(e *echo.Echo, database *db.DB, kms *kms.Encryptor, jwtSecret strin
 	dash.Use(middleware.CustomerRateLimit(30, 60))
 	dash.Use(middleware.AuditLog(database.AuditEvents))
 
-	dash.GET("/customers/:id", h.GetCustomer)    // own record only
+	dash.GET("/customers/:id", h.GetCustomer) // own record only
 	dash.DELETE("/customers/:id", h.DeleteCustomer)
 
 	dash.POST("/zones", h.CreateZone)

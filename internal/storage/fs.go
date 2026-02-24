@@ -23,7 +23,7 @@ func NewFSStore(root string) (*FSStore, error) {
 		return nil, fmt.Errorf("storage: invalid root path: %w", err)
 	}
 
-	if err := os.MkdirAll(absRoot, 0755); err != nil {
+	if err := os.MkdirAll(absRoot, 0o755); err != nil {
 		return nil, fmt.Errorf("storage: create root dir: %w", err)
 	}
 
@@ -37,7 +37,7 @@ func (s *FSStore) Provider() string {
 	return s.provider
 }
 
-func (s *FSStore) PutLogs(ctx context.Context, customerID, zoneID uuid.UUID, from, to time.Time, raw []byte) (key, sha256hex string, compressedBytes, logLines int64, err error) {
+func (s *FSStore) PutLogs(_ context.Context, customerID, zoneID uuid.UUID, from, to time.Time, raw []byte) (key, sha256hex string, compressedBytes, logLines int64, err error) {
 	// Re-use logic for compression/hashing/key generation from common helpers?
 	// For now, let's duplicate the non-AWS logic to keep it independent,
 	// or ideally refactor S3 logic to share "blob preparation".
@@ -57,7 +57,7 @@ func (s *FSStore) PutLogs(ctx context.Context, customerID, zoneID uuid.UUID, fro
 	fullPath := filepath.Join(s.root, meta.Key)
 	dir := filepath.Dir(fullPath)
 
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", "", 0, 0, fmt.Errorf("storage: mkdir: %w", err)
 	}
 
@@ -69,7 +69,7 @@ func (s *FSStore) PutLogs(ctx context.Context, customerID, zoneID uuid.UUID, fro
 	tmpName := tmpFile.Name()
 	defer os.Remove(tmpName) // Cleanup (ignored if renamed successfully)
 
-	if err := tmpFile.Chmod(0644); err != nil {
+	if err := tmpFile.Chmod(0o644); err != nil {
 		tmpFile.Close()
 		return "", "", 0, 0, fmt.Errorf("storage: chmod: %w", err)
 	}
@@ -89,7 +89,7 @@ func (s *FSStore) PutLogs(ctx context.Context, customerID, zoneID uuid.UUID, fro
 	return meta.Key, meta.SHA256, meta.Size, meta.Lines, nil
 }
 
-func (s *FSStore) GetLogs(ctx context.Context, key string) ([]byte, error) {
+func (s *FSStore) GetLogs(_ context.Context, key string) ([]byte, error) {
 	fullPath := filepath.Join(s.root, key)
 	f, err := os.Open(fullPath)
 	if err != nil {
@@ -108,7 +108,7 @@ func (s *FSStore) GetLogs(ctx context.Context, key string) ([]byte, error) {
 	return DecompressBlob(f)
 }
 
-func (s *FSStore) DeleteObject(ctx context.Context, key string) error {
+func (s *FSStore) DeleteObject(_ context.Context, key string) error {
 	fullPath := filepath.Join(s.root, key)
 	if err := os.Remove(fullPath); err != nil {
 		if os.IsNotExist(err) {

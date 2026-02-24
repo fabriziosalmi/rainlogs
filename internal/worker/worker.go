@@ -77,7 +77,7 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 	}
 
 	// 4. Pull Logs from Cloudflare
-	cfClient := cloudflare.NewClient(p.cfCfg, zone.ZoneID, string(cfKey))
+	cfClient := cloudflare.NewClient(p.cfCfg, zone.ZoneID, cfKey)
 	logs, err := cfClient.PullLogs(ctx, payload.PeriodStart, payload.PeriodEnd, nil)
 	if err != nil {
 		return p.failJob(ctx, job, fmt.Errorf("pull logs: %w", err))

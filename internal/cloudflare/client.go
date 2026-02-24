@@ -73,7 +73,7 @@ func (c *Client) PullLogs(ctx context.Context, from, to time.Time, fields []stri
 	}
 	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("cloudflare: new request: %w", err)
 	}

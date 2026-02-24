@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/fabriziosalmi/rainlogs/internal/config"
 	"github.com/fabriziosalmi/rainlogs/internal/db"
@@ -22,30 +23,33 @@ import (
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	cfg, err := config.Load()
 	if err != nil {
+		cancel()
 		fmt.Printf("failed to load config: %v\n", err)
 		os.Exit(1)
 	}
 
 	log := logger.Must(cfg.App.Env)
-	defer log.Sync() //nolint:errcheck
+	defer log.Sync() //nolint:errcheck // zap.Logger.Sync error is safe to ignore in main
 
 	// 1. Init DB
 	database, err := db.Connect(ctx, cfg.Database)
 	if err != nil {
+		cancel()
 		log.Fatal("failed to connect to db", zap.Error(err))
 	}
 	defer database.Close()
 
 	// 2. Init KMS
 	if cfg.KMS.Key == "" {
+		cancel()
 		log.Fatal("KMS key is required (RAINLOGS_KMS_KEY)")
 	}
 	kmsService, err := kms.New(cfg.KMS.Key)
 	if err != nil {
+		cancel()
 		log.Fatal("failed to init kms", zap.Error(err))
 	}
 
@@ -59,10 +63,12 @@ func main() {
 	case "fs":
 		backend, storeErr = storage.NewFSStore(cfg.Storage.FSRoot)
 	default:
+		cancel()
 		log.Fatal("unknown storage backend", zap.String("backend", cfg.Storage.Backend))
 	}
 
 	if storeErr != nil {
+		cancel()
 		log.Fatal("failed to init storage", zap.String("backend", cfg.Storage.Backend), zap.Error(storeErr))
 	}
 
@@ -114,7 +120,7 @@ func main() {
 	// 8. Minimal HTTP health endpoint for Docker/K8s liveness probes.
 	inspector := asynq.NewInspector(redisOpt)
 	go func() {
-		http.HandleFunc("/health/worker", func(w http.ResponseWriter, r *http.Request) {
+		http.HandleFunc("/health/worker", func(w http.ResponseWriter, _ *http.Request) {
 			type queueInfo struct {
 				Size int `json:"size"`
 			}
@@ -139,7 +145,12 @@ func main() {
 			}
 			_ = json.NewEncoder(w).Encode(resp{Status: overall, Queues: queues})
 		})
-		if err := http.ListenAndServe(":8081", nil); err != nil {
+		healthSrv := &http.Server{
+			Addr:         ":8081",
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 10 * time.Second,
+		}
+		if err := healthSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error("worker health server stopped", zap.Error(err))
 		}
 	}()
@@ -152,5 +163,6 @@ func main() {
 	<-quit
 
 	log.Info("shutting down worker...")
+	cancel()
 	srv.Shutdown()
 }

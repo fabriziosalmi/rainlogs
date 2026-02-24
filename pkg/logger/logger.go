@@ -1,8 +1,8 @@
 package logger
 
 import (
-"go.uber.org/zap"
-"go.uber.org/zap/zapcore"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // New creates a production-ready zap logger.
@@ -19,7 +19,7 @@ func New(env string) (*zap.Logger, error) {
 	return cfg.Build()
 }
 
-// Must panics if the logger cannot be initialised. Useful in main().
+// Must panics if the logger cannot be initialized. Useful in main().
 func Must(env string) *zap.Logger {
 	log, err := New(env)
 	if err != nil {

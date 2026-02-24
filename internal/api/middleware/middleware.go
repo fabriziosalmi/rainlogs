@@ -26,7 +26,7 @@ func APIKeyAuth(database *db.DB) echo.MiddlewareFunc {
 			}
 
 			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid authorization format")
 			}
 
@@ -83,7 +83,7 @@ func JWTAuth(secret string) echo.MiddlewareFunc {
 			}
 
 			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid authorization format")
 			}
 

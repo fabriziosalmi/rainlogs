@@ -66,10 +66,7 @@ func DecompressBlob(r io.Reader) ([]byte, error) {
 	}
 	defer gr.Close()
 
-	readerFunc := func(r io.Reader) ([]byte, error) {
-		return io.ReadAll(r)
-	}
-	return readerFunc(gr)
+	return io.ReadAll(gr)
 }
 
 func countLines(b []byte) int {

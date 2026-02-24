@@ -2,6 +2,7 @@ package integration
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,13 +14,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Config for integration tests
+// Config for integration tests.
 const (
 	BaseURL = "http://localhost:8080"
 )
 
 func TestHealthCheck(t *testing.T) {
-	resp, err := http.Get(BaseURL + "/health")
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, BaseURL+"/health", http.NoBody)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -44,14 +47,17 @@ func createCustomer(t *testing.T) string {
 	}
 	body, _ := json.Marshal(payload)
 
-	resp, err := http.Post(BaseURL+"/customers", "application/json", bytes.NewBuffer(body))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, BaseURL+"/customers", bytes.NewBuffer(body))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
 		// print body for debugging
 		var buf bytes.Buffer
-		buf.ReadFrom(resp.Body)
+		buf.ReadFrom(resp.Body) //nolint:errcheck // best-effort debug output
 		t.Fatalf("expected 201 Created, got %d: %s", resp.StatusCode, buf.String())
 	}
 
@@ -65,7 +71,9 @@ func createCustomer(t *testing.T) string {
 }
 
 func getCustomer(t *testing.T, id string) {
-	resp, err := http.Get(BaseURL + "/customers/" + id)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, BaseURL+"/customers/"+id, http.NoBody)
+	require.NoError(t, err)
+	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 
@@ -83,7 +91,12 @@ func TestMain(m *testing.M) {
 
 func waitForService(url string) error {
 	for i := 0; i < 30; i++ {
-		resp, err := http.Get(url)
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, http.NoBody)
+		if err != nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		resp, err := http.DefaultClient.Do(req)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == 200 {
