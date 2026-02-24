@@ -70,7 +70,7 @@ func main() {
 	defer queueClient.Close()
 
 	// 5. Init Processors
-	pullProcessor := worker.NewLogPullProcessor(database, kmsService, s3Client, queueClient)
+	pullProcessor := worker.NewLogPullProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare)
 	verifyProcessor := worker.NewLogVerifyProcessor(database, s3Client)
 	expireProcessor := worker.NewLogExpireProcessor(database, s3Client)
 

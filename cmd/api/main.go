@@ -3,18 +3,22 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
 
+	apimw "github.com/fabriziosalmi/rainlogs/internal/api/middleware"
 	"github.com/fabriziosalmi/rainlogs/internal/api/routes"
 	"github.com/fabriziosalmi/rainlogs/internal/config"
 	"github.com/fabriziosalmi/rainlogs/internal/db"
 	"github.com/fabriziosalmi/rainlogs/internal/kms"
+	"github.com/fabriziosalmi/rainlogs/internal/storage"
+	"github.com/hibiken/asynq"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+	echomw "github.com/labstack/echo/v4/middleware"
 )
 
 func main() {
@@ -42,28 +46,96 @@ func main() {
 		log.Fatalf("failed to init kms: %v", err)
 	}
 
-	// 3. Init Echo
+	// 3. Init Storage (for log download)
+	var backend storage.Backend
+	switch cfg.Storage.Backend {
+	case "s3":
+		backend, err = storage.New(ctx, cfg.S3, "s3-default")
+	case "fs":
+		backend, err = storage.NewFSStore(cfg.Storage.FSRoot)
+	default:
+		log.Fatalf("unknown storage backend: %s", cfg.Storage.Backend)
+	}
+	if err != nil {
+		log.Fatalf("failed to init storage: %v", err)
+	}
+	multiStore := storage.NewMultiStore(backend)
+
+	// 4. Init Queue client (for trigger-pull)
+	redisOpt, err := asynq.ParseRedisURI(cfg.Redis.Addr)
+	if err != nil {
+		log.Fatalf("failed to parse redis uri: %v", err)
+	}
+	queueClient := asynq.NewClient(redisOpt)
+	defer queueClient.Close()
+
+	// 5. Init Echo
 	e := echo.New()
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
+	e.HideBanner = true
+
+	// Global middleware
+	e.Use(apimw.RequestID())
+	e.Use(apimw.SecurityHeaders())
+	e.Use(echomw.Logger())
+	e.Use(echomw.Recover())
+	e.Use(echomw.CORS())
+	e.Use(echomw.GzipWithConfig(echomw.GzipConfig{Level: 5}))
+	// 60 req/s per IP, burst of 120
+	e.Use(apimw.RateLimit(60, 120))
 
 	jwtSecret := cfg.JWT.Secret
 	if jwtSecret == "" {
 		log.Fatal("JWT_SECRET is required")
 	}
 
-	// 4. Register Routes
-	routes.Register(e, database, kmsService, jwtSecret)
+	// 6. Register Routes
+	routes.Register(e, database, kmsService, jwtSecret, queueClient, multiStore)
 
-	// 5. Start Server
+	// 7. Enhanced health check
+	e.GET("/health", func(c echo.Context) error {
+		type depStatus struct {
+			Status string `json:"status"`
+			Error  string `json:"error,omitempty"`
+		}
+		type healthResponse struct {
+			Status  string               `json:"status"`
+			Version string               `json:"version"`
+			Deps    map[string]depStatus `json:"deps"`
+		}
+
+		deps := make(map[string]depStatus)
+		overall := "ok"
+
+		pingCtx, cancel := context.WithTimeout(c.Request().Context(), 2*time.Second)
+		defer cancel()
+		if err := database.Pool.Ping(pingCtx); err != nil {
+			deps["postgres"] = depStatus{Status: "error", Error: err.Error()}
+			overall = "degraded"
+		} else {
+			deps["postgres"] = depStatus{Status: "ok"}
+		}
+
+		status := http.StatusOK
+		if overall != "ok" {
+			status = http.StatusServiceUnavailable
+		}
+
+		return c.JSON(status, healthResponse{
+			Status:  overall,
+			Version: cfg.App.Version,
+			Deps:    deps,
+		})
+	})
+
+	// 8. Start Server
 	go func() {
 		port := strconv.Itoa(cfg.App.Port)
-		if err := e.Start(":" + port); err != nil {
+		if err := e.Start(":" + port); err != nil && err != http.ErrServerClosed {
 			log.Printf("server stopped: %v", err)
 		}
 	}()
 
-	// 6. Graceful Shutdown
+	// 9. Graceful Shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

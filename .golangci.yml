@@ -1,0 +1,76 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose
+    - contextcheck
+    - exhaustive
+    - gochecknoinits
+    - gocritic
+    - godot
+    - gofmt
+    - goimports
+    - gosec
+    - misspell
+    - noctx
+    - nolintlint
+    - prealloc
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - unparam
+    - whitespace
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/fabriziosalmi/rainlogs
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment  # too noisy for this project size
+  gosec:
+    excludes:
+      - G115  # integer overflow conversion (false positives with pgx)
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+      - name: unused-parameter
+        severity: warning
+      - name: var-naming
+        severity: warning
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+    disabled-checks:
+      - hugeParam          # we pass structs by value intentionally in some places
+      - unnamedResult
+  misspell:
+    locale: US
+
+issues:
+  exclude-rules:
+    # Test files can use unsafe patterns
+    - path: "_test\\.go"
+      linters: [gosec, errcheck]
+    # Generated migration files
+    - path: "migrations/"
+      linters: [all]
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+run:
+  timeout: 5m
+  go: "1.24"

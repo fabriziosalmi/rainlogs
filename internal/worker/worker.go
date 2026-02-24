@@ -25,14 +25,16 @@ type LogPullProcessor struct {
 	kms     *kms.Encryptor
 	storage *storage.MultiStore
 	queue   *asynq.Client
+	cfCfg   config.CloudflareConfig
 }
 
-func NewLogPullProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client) *LogPullProcessor {
+func NewLogPullProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client, cfCfg config.CloudflareConfig) *LogPullProcessor {
 	return &LogPullProcessor{
 		db:      db,
 		kms:     kms,
 		storage: storage,
 		queue:   queue,
+		cfCfg:   cfCfg,
 	}
 }
 
@@ -72,14 +74,7 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 	}
 
 	// 4. Pull Logs from Cloudflare
-	// We need CloudflareConfig here. Let's just use a default one for now or pass it to the processor.
-	// For simplicity, we'll use a default config.
-	cfCfg := config.CloudflareConfig{
-		BaseURL:        "https://api.cloudflare.com/client/v4",
-		RequestTimeout: 30 * time.Second,
-		MaxWindowSize:  1 * time.Hour,
-	}
-	cfClient := cloudflare.NewClient(cfCfg, zone.ZoneID, string(cfKey))
+	cfClient := cloudflare.NewClient(p.cfCfg, zone.ZoneID, string(cfKey))
 	logs, err := cfClient.PullLogs(ctx, payload.PeriodStart, payload.PeriodEnd, nil)
 	if err != nil {
 		return p.failJob(ctx, job, fmt.Errorf("pull logs: %w", err))
