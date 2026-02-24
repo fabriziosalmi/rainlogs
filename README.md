@@ -38,6 +38,7 @@ RainLogs aligns collection strategies with available Cloudflare plan features:
 
 [![CI](https://github.com/fabriziosalmi/rainlogs/actions/workflows/ci.yml/badge.svg)](https://github.com/fabriziosalmi/rainlogs/actions/workflows/ci.yml)
 [![Go 1.24](https://img.shields.io/badge/go-1.24-blue)](https://go.dev)
+[![Release](https://img.shields.io/github/v/release/fabriziosalmi/rainlogs)](https://github.com/fabriziosalmi/rainlogs/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 ## Rationale

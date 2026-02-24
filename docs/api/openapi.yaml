@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Rainlogs API
   description: API for managing Cloudflare logs ingestion, retrieval, and compliance.
-  version: 1.0.0
+  version: 0.9.2
 servers:
   - url: http://localhost:8080
     description: Development Server
