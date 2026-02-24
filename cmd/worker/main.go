@@ -117,7 +117,7 @@ func run() error {
 	pullProcessor := worker.NewLogPullProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, appLog, notifier)
 	securityProcessor := worker.NewSecurityEventsProcessor(database, kmsService, s3Client, queueClient, cfg.Cloudflare, appLog, notifier)
 	verifyProcessor := worker.NewLogVerifyProcessor(database, s3Client, appLog)
-	expireProcessor := worker.NewLogExpireProcessor(database, s3Client, appLog)
+	expireProcessor := worker.NewLogExpireProcessor(database.LogJobs, s3Client, appLog)
 	exportProcessor := worker.NewLogExportProcessor(database, kmsService, s3Client, appLog, notifier)
 
 	// 6b. Init Instant Logs Daemon

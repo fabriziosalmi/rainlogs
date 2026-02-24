@@ -250,14 +250,14 @@ func (p *LogVerifyProcessor) ProcessTask(ctx context.Context, t *asynq.Task) err
 }
 
 type LogExpireProcessor struct {
-	db      *db.DB
-	storage *storage.MultiStore
+	repo    LogRepository
+	storage LogStorage
 	log     *zap.Logger
 }
 
-func NewLogExpireProcessor(db *db.DB, storage *storage.MultiStore, log *zap.Logger) *LogExpireProcessor {
+func NewLogExpireProcessor(repo LogRepository, storage LogStorage, log *zap.Logger) *LogExpireProcessor {
 	return &LogExpireProcessor{
-		db:      db,
+		repo:    repo,
 		storage: storage,
 		log:     log,
 	}
@@ -269,7 +269,7 @@ func (p *LogExpireProcessor) ProcessTask(ctx context.Context, t *asynq.Task) err
 		return fmt.Errorf("parse payload: %w", err)
 	}
 
-	jobs, err := p.db.LogJobs.ListExpired(ctx, payload.CustomerID, payload.RetentionDays)
+	jobs, err := p.repo.ListExpired(ctx, payload.CustomerID, payload.RetentionDays)
 	if err != nil {
 		return fmt.Errorf("list expired jobs: %w", err)
 	}
@@ -281,7 +281,7 @@ func (p *LogExpireProcessor) ProcessTask(ctx context.Context, t *asynq.Task) err
 				continue
 			}
 		}
-		if err := p.db.LogJobs.MarkExpired(ctx, job.ID); err != nil {
+		if err := p.repo.MarkExpired(ctx, job.ID); err != nil {
 			p.log.Error("failed to mark job expired", zap.String("job_id", job.ID.String()), zap.Error(err))
 		}
 	}
