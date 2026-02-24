@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/fabriziosalmi/rainlogs/internal/cloudflare"
@@ -19,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 )
 
 type LogPullProcessor struct {
@@ -28,9 +30,14 @@ type LogPullProcessor struct {
 	queue   *asynq.Client
 	cfCfg   config.CloudflareConfig
 	log     *zap.Logger
+	limiter *rate.Limiter
 }
 
 func NewLogPullProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client, cfCfg config.CloudflareConfig, log *zap.Logger) *LogPullProcessor {
+	var limiter *rate.Limiter
+	if cfCfg.RateLimit > 0 {
+		limiter = rate.NewLimiter(rate.Limit(cfCfg.RateLimit), 1)
+	}
 	return &LogPullProcessor{
 		db:      db,
 		kms:     kms,
@@ -38,6 +45,7 @@ func NewLogPullProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiSt
 		queue:   queue,
 		cfCfg:   cfCfg,
 		log:     log,
+		limiter: limiter,
 	}
 }
 
@@ -77,6 +85,12 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 	}
 
 	// 4. Pull Logs from Cloudflare
+	if p.limiter != nil {
+		if err := p.limiter.Wait(ctx); err != nil {
+			return p.failJob(ctx, job, fmt.Errorf("rate limiter: %w", err))
+		}
+	}
+
 	cfClient := cloudflare.NewClient(p.cfCfg, zone.ZoneID, cfKey)
 	logs, err := cfClient.PullLogs(ctx, payload.PeriodStart, payload.PeriodEnd, nil)
 	if err != nil {
@@ -145,6 +159,17 @@ func (p *LogPullProcessor) failJob(ctx context.Context, job *models.LogJob, err 
 	job.Status = models.JobStatusFailed
 	job.ErrMsg = err.Error()
 	_ = p.db.LogJobs.Update(ctx, job)
+
+	// If the error is 403 Forbidden, it means the feature is not available (likely not Enterprise).
+	// We should stop retrying to avoid spamming the logs and the API.
+	if strings.Contains(err.Error(), "HTTP 403") {
+		p.log.Error("Cloudflare Logpull API not available (requires Enterprise plan). Stopping retry.",
+			zap.String("job_id", job.ID.String()),
+			zap.Error(err),
+		)
+		return nil // Return nil to stop retrying
+	}
+
 	return err
 }
 

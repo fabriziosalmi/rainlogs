@@ -2,7 +2,9 @@
 
 > Cloudflare log archiving for NIS2-compliant European businesses.
 
-RainLogs collects logs from Cloudflare zones via the **Logpull API** (available on Free, Pro, and Business plans) and stores them in **EU-sovereign object storage** (Garage S3-compatible, Hetzner, Contabo) with **WORM integrity guarantees** suitable for NIS2 / D.Lgs. 138/2024 incident forensics.
+RainLogs collects logs from Cloudflare zones via the **Logpull API** and stores them in **EU-sovereign object storage** (Garage S3-compatible, Hetzner, Contabo) with **WORM integrity guarantees** suitable for NIS2 / D.Lgs. 138/2024 incident forensics.
+
+**Important Note:** The Cloudflare Logpull API (`GET /zones/:id/logs/received`) requires an **Enterprise** plan. If you are on a Free, Pro, or Business plan, this tool will likely receive `403 Forbidden` errors from Cloudflare.
 
 [![CI](https://github.com/fabriziosalmi/rainlogs/actions/workflows/ci.yml/badge.svg)](https://github.com/fabriziosalmi/rainlogs/actions/workflows/ci.yml)
 [![Go 1.24](https://img.shields.io/badge/go-1.24-blue)](https://go.dev)
@@ -13,7 +15,7 @@ RainLogs collects logs from Cloudflare zones via the **Logpull API** (available 
 | Problem | RainLogs solution |
 |---------|-------------------|
 | Cloudflare retains Logpull data for **7 days only** | Pulls every 5 min, archives for **13+ months** (configurable) |
-| Logpush (real-time export) requires **Enterprise** plan | Works with **Free / Pro / Business** via Logpull |
+| Logpush (real-time export) requires **Enterprise** plan | Automates **Logpull** (Enterprise) |
 | Log tampering risk undermines forensic value | SHA-256 WORM chain + append-only hash linking |
 | US Cloud Act risk for EU data | Storage exclusively on **EU-based** providers; no US entity in chain |
 | NIS2 art. 21 – incident reporting within 24h | Structured NDJSON archive queryable by time window |

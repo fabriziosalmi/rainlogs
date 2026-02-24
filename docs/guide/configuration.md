@@ -48,6 +48,13 @@ The primary way to configure Rainlogs is through environment variables. The appl
 |---|---|---|
 | `RAINLOGS_KMS_KEY` | The 32-byte base64-encoded KMS key used for encryption. | `""` |
 
+### Cloudflare
+
+| Variable | Description | Default |
+|---|---|---|
+| `RAINLOGS_CLOUDFLARE_RATE_LIMIT` | The rate limit for Cloudflare API requests (requests per second). | `0` (unlimited) |
+| `RAINLOGS_CLOUDFLARE_MAX_WINDOW_SIZE` | Max log pull window per request. | `1h` |
+
 ## Configuration File
 
 You can also provide a `config.yaml` file in the root directory of the application. The structure mirrors the environment variables.

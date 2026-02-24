@@ -72,6 +72,8 @@ type CloudflareConfig struct {
 	RequestTimeout time.Duration `mapstructure:"request_timeout"`
 	// Max log pull window per request (CF limit: 1h)
 	MaxWindowSize time.Duration `mapstructure:"max_window_size"`
+	// Rate limit for Cloudflare API requests
+	RateLimit float64 `mapstructure:"rate_limit"`
 }
 
 type WorkerConfig struct {
