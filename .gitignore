@@ -26,3 +26,8 @@ docker/garage/data/
 docker/garage/meta/
 docs/node_modules/
 docs/.vitepress/cache/
+
+# compiled binaries
+/api
+/worker
+coverage.out
