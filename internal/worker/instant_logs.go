@@ -116,18 +116,13 @@ func (m *InstantLogsManager) syncStreams(ctx context.Context) {
 
 		go func(z *models.Zone) {
 			defer m.wg.Done()
-			// Run the stream manager for this zone until ctxZone is cancelled
+			// Run the stream manager for this zone until ctxZone is canceled
 			m.runZoneStream(ctxZone, z)
 
-			// Cleanup on exit (if it wasn't cancelled by syncStreams)
-			m.mu.Lock()
-			if _, ok := m.streams[z.ID.String()]; ok {
-				// Only delete if we are still in the map (avoid race with syncStreams removal)
-				// Actually, we shouldn't delete here if we want to restart on error?
-				// runZoneStream loops forever until context cancel, so if we are here, context is done.
-				// We can just let the map be cleaned up by syncStreams or stopAll.
-			}
-			m.mu.Unlock()
+			// Cleanup on exit: nothing to do here. runZoneStream only returns
+			// once its context is canceled, so the entry is removed by
+			// syncStreams or stopAll, not from this goroutine (deleting here
+			// would race with syncStreams).
 		}(zone)
 	}
 }

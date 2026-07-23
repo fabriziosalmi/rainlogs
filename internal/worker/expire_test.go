@@ -5,16 +5,17 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/fabriziosalmi/rainlogs/internal/models"
-	"github.com/fabriziosalmi/rainlogs/internal/queue"
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
+
+	"github.com/fabriziosalmi/rainlogs/internal/models"
+	"github.com/fabriziosalmi/rainlogs/internal/queue"
 )
 
-// MockLogStorage simulates storage interactions
+// MockLogStorage simulates storage interactions.
 type MockLogStorage struct {
 	mock.Mock
 }
@@ -24,7 +25,7 @@ func (m *MockLogStorage) DeleteObject(ctx context.Context, key string) error {
 	return args.Error(0)
 }
 
-// MockLogRepository simulates database interactions
+// MockLogRepository simulates database interactions.
 type MockLogRepository struct {
 	mock.Mock
 }

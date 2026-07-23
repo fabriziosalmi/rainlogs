@@ -111,6 +111,8 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 		waitTime = 100 * time.Millisecond // ~10 reqs/sec max burst
 	case models.PlanBusiness:
 		waitTime = 500 * time.Millisecond // ~2 reqs/sec
+	case models.PlanFreePro:
+		waitTime = 2 * time.Second // ~0.5 reqs/sec (Free/Pro)
 	default:
 		waitTime = 2 * time.Second // ~0.5 reqs/sec (Free/Pro)
 	}

@@ -190,7 +190,7 @@ func run() error {
 	case <-quit:
 		appLog.Info("shutting down API server...")
 	case <-ctx.Done():
-		appLog.Info("context cancelled, shutting down API server...")
+		appLog.Info("context canceled, shutting down API server...")
 	}
 
 	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 10*time.Second)

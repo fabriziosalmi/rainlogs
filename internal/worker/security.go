@@ -134,7 +134,7 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 	}
 
 	// 6. Convert to NDJSON
-	var buffer []byte
+	buffer := make([]byte, 0, len(events))
 	for i := range events {
 		line, merr := json.Marshal(&events[i])
 		if merr != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -12,6 +13,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// errBrokenChain is returned by run when the hash chain fails to verify. It is
+// a distinct error so main can exit non-zero without log.Fatal printing it
+// again on top of the detailed report already written to stdout.
+var errBrokenChain = errors.New("hash chain broken")
 
 func main() {
 	dbURL := flag.String("db", "", "Postgres connection string")
@@ -23,24 +29,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
-	db, err := pgxpool.New(ctx, *dbURL)
-	if err != nil {
+	if err := run(*dbURL, *projectID); err != nil {
+		if errors.Is(err, errBrokenChain) {
+			os.Exit(1)
+		}
 		log.Fatal(err)
+	}
+}
+
+// run performs the verification and returns an error instead of calling
+// log.Fatal, so its deferred Close calls actually run on every exit path.
+func run(dbURL, projectID string) error {
+	ctx := context.Background()
+	db, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		return err
 	}
 	defer db.Close()
 
-	fmt.Printf("Starting verification for project %s...\n", *projectID)
+	fmt.Printf("Starting verification for project %s...\n", projectID)
 
-	// Fetch all logs ordered by timestamp/sequence
+	// Fetch all logs ordered by timestamp/sequence.
 	rows, err := db.Query(ctx, `
-		SELECT id, previous_hash, payload, created_at 
-		FROM logs 
-		WHERE project_id = $1 
+		SELECT id, previous_hash, payload, created_at
+		FROM logs
+		WHERE project_id = $1
 		ORDER BY created_at ASC, id ASC
-	`, *projectID)
+	`, projectID)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	defer rows.Close()
 
@@ -52,7 +69,7 @@ func main() {
 		lastCreated time.Time
 	)
 
-	// Initial hash for the chain start (genesis block equivalent, often empty or specific constant)
+	// Initial hash for the chain start (genesis block equivalent, often empty or specific constant).
 	lastHash = ""
 
 	for rows.Next() {
@@ -64,7 +81,7 @@ func main() {
 		)
 
 		if err := rows.Scan(&id, &prevHash, &payload, &createdAt); err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		// 1. Verify links
@@ -97,13 +114,17 @@ func main() {
 			fmt.Printf("Verified %d logs...\r", count)
 		}
 	}
-
-	if !broken {
-		fmt.Printf("\n✅ Verification Complete. Chain is INTACT.\n")
-		fmt.Printf("   Total Logs: %d\n", count)
-		fmt.Printf("   Last Log ID: %d (%s)\n", lastID, lastCreated)
-		fmt.Printf("   Final Hash:  %s\n", lastHash)
-	} else {
-		os.Exit(1)
+	if err := rows.Err(); err != nil {
+		return err
 	}
+
+	if broken {
+		return errBrokenChain
+	}
+
+	fmt.Printf("\n✅ Verification Complete. Chain is INTACT.\n")
+	fmt.Printf("   Total Logs: %d\n", count)
+	fmt.Printf("   Last Log ID: %d (%s)\n", lastID, lastCreated)
+	fmt.Printf("   Final Hash:  %s\n", lastHash)
+	return nil
 }
