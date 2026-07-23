@@ -58,7 +58,7 @@ func TestFSStore(t *testing.T) {
 	}
 
 	// Test DeleteObject
-	if err := store.DeleteObject(ctx, key); err != nil {
+	if err = store.DeleteObject(ctx, key); err != nil {
 		t.Fatalf("DeleteObject failed: %v", err)
 	}
 
