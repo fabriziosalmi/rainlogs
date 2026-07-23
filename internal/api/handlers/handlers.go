@@ -331,7 +331,7 @@ func (h *Handlers) UpdateZone(c echo.Context) error {
 	}
 
 	var req UpdateZoneRequest
-	if err := c.Bind(&req); err != nil {
+	if err = c.Bind(&req); err != nil {
 		return apiErr(c, http.StatusBadRequest, "invalid request body", "INVALID_REQUEST")
 	}
 
@@ -373,7 +373,7 @@ func (h *Handlers) UpdateZone(c echo.Context) error {
 		active = *req.Active
 	}
 
-	if err := h.db.Zones.Update(ctx, zoneID, customerID, name, plan, intervalSecs, active); err != nil {
+	if err = h.db.Zones.Update(ctx, zoneID, customerID, name, plan, intervalSecs, active); err != nil {
 		c.Logger().Errorf("update zone %s: %v", zoneID, err)
 		return apiErr(c, http.StatusInternalServerError, "failed to update zone")
 	}
@@ -458,12 +458,12 @@ func (h *Handlers) GetZoneLogs(c echo.Context) error {
 	limit := 50
 	offset := 0
 	if l := c.QueryParam("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 500 {
+		if v, cerr := strconv.Atoi(l); cerr == nil && v > 0 && v <= 500 {
 			limit = v
 		}
 	}
 	if o := c.QueryParam("offset"); o != "" {
-		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
+		if v, cerr := strconv.Atoi(o); cerr == nil && v >= 0 {
 			offset = v
 		}
 	}
@@ -491,7 +491,7 @@ func (h *Handlers) CreateAPIKey(c echo.Context) error {
 	}
 
 	var req CreateAPIKeyRequest
-	if err := c.Bind(&req); err != nil {
+	if err = c.Bind(&req); err != nil {
 		return apiErr(c, http.StatusBadRequest, "invalid request body", "INVALID_REQUEST")
 	}
 	if req.Label == "" {
@@ -587,12 +587,12 @@ func (h *Handlers) ListLogJobs(c echo.Context) error {
 	limit := 50
 	offset := 0
 	if l := c.QueryParam("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 500 {
+		if v, cerr := strconv.Atoi(l); cerr == nil && v > 0 && v <= 500 {
 			limit = v
 		}
 	}
 	if o := c.QueryParam("offset"); o != "" {
-		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
+		if v, cerr := strconv.Atoi(o); cerr == nil && v >= 0 {
 			offset = v
 		}
 	}
@@ -729,12 +729,12 @@ func (h *Handlers) ListAuditLog(c echo.Context) error {
 	limit := 100
 	offset := 0
 	if l := c.QueryParam("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 1000 {
+		if v, cerr := strconv.Atoi(l); cerr == nil && v > 0 && v <= 1000 {
 			limit = v
 		}
 	}
 	if o := c.QueryParam("offset"); o != "" {
-		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
+		if v, cerr := strconv.Atoi(o); cerr == nil && v >= 0 {
 			offset = v
 		}
 	}

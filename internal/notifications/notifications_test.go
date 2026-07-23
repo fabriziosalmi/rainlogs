@@ -38,14 +38,14 @@ func TestSlackNotifier_SendAlert(t *testing.T) {
 	assert.Equal(t, "Rainlogs Alert: Project proj-123", capturedPayload.Text)
 	if assert.NotEmpty(t, capturedPayload.Attachments) {
 		att := capturedPayload.Attachments[0]
-		assert.Equal(t, "#ff0000", att.Color) // critical = red
+		assert.Equal(t, "#ff0000", att.Color) // critical severity renders in red
 		assert.Equal(t, "[critical] Alert", att.Title)
 		assert.Equal(t, "Something went wrong", att.Text)
 	}
 }
 
 func TestSlackNotifier_SendAlert_Error(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()

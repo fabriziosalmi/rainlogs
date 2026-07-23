@@ -66,7 +66,7 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 		PeriodEnd:   payload.PeriodEnd,
 		Status:      models.JobStatusPending,
 	}
-	if err := p.db.LogJobs.Create(ctx, job); err != nil {
+	if err = p.db.LogJobs.Create(ctx, job); err != nil {
 		return fmt.Errorf("create job: %w", err)
 	}
 
@@ -82,13 +82,13 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 
 	// 2a. Check Quota
 	if customer.QuotaBytes != -1 {
-		usage, err := p.db.LogJobs.GetCurrentUsage(ctx, customer.ID)
-		if err != nil {
-			return p.failJob(ctx, job, fmt.Errorf("check quota: %w", err))
+		usage, uerr := p.db.LogJobs.GetCurrentUsage(ctx, customer.ID)
+		if uerr != nil {
+			return p.failJob(ctx, job, fmt.Errorf("check quota: %w", uerr))
 		}
 		if usage >= customer.QuotaBytes {
 			msg := fmt.Sprintf("Quota exceeded for customer %s (Usage: %d, Limit: %d)", customer.Name, usage, customer.QuotaBytes)
-			if err := p.notifier.SendAlert(ctx, customer.ID.String(), "warning", msg); err != nil {
+			if err = p.notifier.SendAlert(ctx, customer.ID.String(), "warning", msg); err != nil {
 				p.log.Warn("failed to send quota alert", zap.Error(err))
 			}
 			return p.failJob(ctx, job, fmt.Errorf("quota exceeded"))
@@ -103,7 +103,7 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 
 	// 4. Rate Limiter
 	if p.limiter != nil {
-		if err := p.limiter.Wait(ctx); err != nil {
+		if err = p.limiter.Wait(ctx); err != nil {
 			return p.failJob(ctx, job, fmt.Errorf("rate limiter: %w", err))
 		}
 	}
@@ -121,7 +121,7 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 			zap.Time("start", payload.PeriodStart),
 			zap.Time("end", payload.PeriodEnd),
 		)
-		if err := p.notifier.SendAlert(ctx, zone.ID.String(), "warning", fmt.Sprintf("Security events limit reached (1000) for zone %s. Potential data loss.", zone.Name)); err != nil {
+		if err = p.notifier.SendAlert(ctx, zone.ID.String(), "warning", fmt.Sprintf("Security events limit reached (1000) for zone %s. Potential data loss.", zone.Name)); err != nil {
 			p.log.Warn("failed to send security events warning", zap.Error(err))
 		}
 	}
@@ -134,11 +134,11 @@ func (p *SecurityEventsProcessor) ProcessTask(ctx context.Context, t *asynq.Task
 	}
 
 	// 6. Convert to NDJSON
-	var buffer []byte
+	buffer := make([]byte, 0, len(events))
 	for i := range events {
-		line, err := json.Marshal(&events[i])
-		if err != nil {
-			p.log.Error("failed to marshal event", zap.Error(err))
+		line, merr := json.Marshal(&events[i])
+		if merr != nil {
+			p.log.Error("failed to marshal event", zap.Error(merr))
 			continue
 		}
 		buffer = append(buffer, line...)

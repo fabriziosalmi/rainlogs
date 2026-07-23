@@ -57,7 +57,7 @@ func (s *FSStore) PutLogs(_ context.Context, customerID, zoneID uuid.UUID, from,
 	fullPath := filepath.Join(s.root, meta.Key)
 	dir := filepath.Dir(fullPath)
 
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err = os.MkdirAll(dir, 0o755); err != nil {
 		return "", "", 0, 0, fmt.Errorf("storage: mkdir: %w", err)
 	}
 

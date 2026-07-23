@@ -90,7 +90,7 @@ func (c *Client) PullLogs(ctx context.Context, from, to time.Time, fields []stri
 	if resp.StatusCode == http.StatusTooManyRequests {
 		retryAfterStr := resp.Header.Get("Retry-After")
 		delay := 30 * time.Second
-		if val, err := strconv.Atoi(retryAfterStr); err == nil {
+		if val, perr := strconv.Atoi(retryAfterStr); perr == nil {
 			delay = time.Duration(val) * time.Second
 		}
 		return nil, &RateLimitError{

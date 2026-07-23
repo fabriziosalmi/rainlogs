@@ -65,7 +65,7 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 		PeriodEnd:   payload.PeriodEnd,
 		Status:      models.JobStatusPending,
 	}
-	if err := p.db.LogJobs.Create(ctx, job); err != nil {
+	if err = p.db.LogJobs.Create(ctx, job); err != nil {
 		return fmt.Errorf("create job: %w", err)
 	}
 
@@ -81,13 +81,13 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 
 	// 2a. Check Quota
 	if customer.QuotaBytes != -1 {
-		usage, err := p.db.LogJobs.GetCurrentUsage(ctx, customer.ID)
-		if err != nil {
-			return p.failJob(ctx, job, fmt.Errorf("check quota: %w", err))
+		usage, uerr := p.db.LogJobs.GetCurrentUsage(ctx, customer.ID)
+		if uerr != nil {
+			return p.failJob(ctx, job, fmt.Errorf("check quota: %w", uerr))
 		}
 		if usage >= customer.QuotaBytes {
 			msg := fmt.Sprintf("Quota exceeded for customer %s (Usage: %d, Limit: %d)", customer.Name, usage, customer.QuotaBytes)
-			if err := p.notifier.SendAlert(ctx, customer.ID.String(), "warning", msg); err != nil {
+			if err = p.notifier.SendAlert(ctx, customer.ID.String(), "warning", msg); err != nil {
 				p.log.Warn("failed to send quota alert", zap.Error(err))
 			}
 			return p.failJob(ctx, job, fmt.Errorf("quota exceeded"))
@@ -111,6 +111,8 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 		waitTime = 100 * time.Millisecond // ~10 reqs/sec max burst
 	case models.PlanBusiness:
 		waitTime = 500 * time.Millisecond // ~2 reqs/sec
+	case models.PlanFreePro:
+		waitTime = 2 * time.Second // ~0.5 reqs/sec (Free/Pro)
 	default:
 		waitTime = 2 * time.Second // ~0.5 reqs/sec (Free/Pro)
 	}
@@ -175,7 +177,7 @@ func (p *LogPullProcessor) ProcessTask(ctx context.Context, t *asynq.Task) error
 	job.ChainHash = chainHash
 	job.ByteCount = byteCount
 	job.LogCount = logCount
-	if err := p.db.LogJobs.Update(ctx, job); err != nil {
+	if err = p.db.LogJobs.Update(ctx, job); err != nil {
 		return fmt.Errorf("update job: %w", err)
 	}
 
@@ -369,14 +371,14 @@ func (s *ZoneScheduler) schedule(ctx context.Context) {
 		switch zone.Plan {
 		case models.PlanEnterprise:
 			// Default LogPull behavior
-			t, err := queue.NewLogPullTask(queue.LogPullPayload{
+			t, terr := queue.NewLogPullTask(queue.LogPullPayload{
 				ZoneID:      zone.ID,
 				CustomerID:  zone.CustomerID,
 				PeriodStart: start,
 				PeriodEnd:   now,
 			})
-			if err != nil {
-				s.log.Error("scheduler: create log pull task", zap.String("zone_id", zone.ID.String()), zap.Error(err))
+			if terr != nil {
+				s.log.Error("scheduler: create log pull task", zap.String("zone_id", zone.ID.String()), zap.Error(terr))
 				continue
 			}
 			task = t
@@ -384,14 +386,14 @@ func (s *ZoneScheduler) schedule(ctx context.Context) {
 
 		case models.PlanFreePro:
 			// Security Events Poller
-			t, err := queue.NewSecurityPollTask(queue.SecurityPollPayload{
+			t, terr := queue.NewSecurityPollTask(queue.SecurityPollPayload{
 				ZoneID:      zone.ID,
 				CustomerID:  zone.CustomerID,
 				PeriodStart: start,
 				PeriodEnd:   now,
 			})
-			if err != nil {
-				s.log.Error("scheduler: create security poll task", zap.String("zone_id", zone.ID.String()), zap.Error(err))
+			if terr != nil {
+				s.log.Error("scheduler: create security poll task", zap.String("zone_id", zone.ID.String()), zap.Error(terr))
 				continue
 			}
 			task = t
@@ -404,14 +406,14 @@ func (s *ZoneScheduler) schedule(ctx context.Context) {
 
 		default:
 			// Default to Enterprise logic if not specified (backward compatibility)
-			t, err := queue.NewLogPullTask(queue.LogPullPayload{
+			t, terr := queue.NewLogPullTask(queue.LogPullPayload{
 				ZoneID:      zone.ID,
 				CustomerID:  zone.CustomerID,
 				PeriodStart: start,
 				PeriodEnd:   now,
 			})
-			if err != nil {
-				s.log.Error("scheduler: create fallback task", zap.String("zone_id", zone.ID.String()), zap.Error(err))
+			if terr != nil {
+				s.log.Error("scheduler: create fallback task", zap.String("zone_id", zone.ID.String()), zap.Error(terr))
 				continue
 			}
 			task = t

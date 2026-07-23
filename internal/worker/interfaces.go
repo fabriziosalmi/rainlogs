@@ -3,8 +3,9 @@ package worker
 import (
 	"context"
 
-	"github.com/fabriziosalmi/rainlogs/internal/models"
 	"github.com/google/uuid"
+
+	"github.com/fabriziosalmi/rainlogs/internal/models"
 )
 
 // Interfaces for dependency injection to allow testing.

@@ -53,7 +53,7 @@ func (p *LogExportProcessor) ProcessTask(ctx context.Context, t *asynq.Task) err
 
 	// Update status to processing
 	exportJob.Status = models.ExportStatusProcessing
-	if err := p.db.LogExports.Update(ctx, exportJob); err != nil {
+	if err = p.db.LogExports.Update(ctx, exportJob); err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
 
@@ -64,7 +64,7 @@ func (p *LogExportProcessor) ProcessTask(ctx context.Context, t *asynq.Task) err
 	}
 
 	var s3Cfg models.ExportS3Config
-	if err := json.Unmarshal([]byte(jsonConfig), &s3Cfg); err != nil {
+	if err = json.Unmarshal([]byte(jsonConfig), &s3Cfg); err != nil {
 		return p.failJob(ctx, exportJob, fmt.Errorf("unmarshal s3 config: %w", err))
 	}
 

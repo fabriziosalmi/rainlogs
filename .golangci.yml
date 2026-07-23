@@ -55,6 +55,7 @@ linters-settings:
     disabled-checks:
       - hugeParam       # structs passed by value intentionally in some places
       - unnamedResult
+      - tooManyResultsChecker  # MultiStore.PutLogs returns provider metadata (key, sha, provider, bytes, lines, err) by design
   misspell:
     locale: US
 

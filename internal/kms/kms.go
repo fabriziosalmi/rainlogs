@@ -82,10 +82,7 @@ func (e *Encryptor) Encrypt(plaintext string) (string, error) {
 	return fmt.Sprintf("%s:%s", e.activeKeyID, hex.EncodeToString(ciphertext)), nil
 }
 
-// Decrypt decrypts a string.
-// Supported formats:
-// 1. "id:hex_ciphertext" (Key rotation format)
-// 2. "hex_ciphertext" (Legacy v1 format)
+// 2. "hex_ciphertext" (Legacy v1 format).
 func (e *Encryptor) Decrypt(input string) (string, error) {
 	var keyID string
 	var hexCiphertext string
