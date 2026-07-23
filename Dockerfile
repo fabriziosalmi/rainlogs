@@ -2,7 +2,7 @@
 # Produces two minimal images: `api` and `worker`
 
 # ── Builder ────────────────────────────────────────────────────────────────
-FROM golang:1.24-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates tzdata
 
