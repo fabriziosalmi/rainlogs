@@ -82,8 +82,13 @@ func (e *Encryptor) Encrypt(plaintext string) (string, error) {
 	return fmt.Sprintf("%s:%s", e.activeKeyID, hex.EncodeToString(ciphertext)), nil
 }
 
-// 2. "hex_ciphertext" (Legacy v1 format).
+// Decrypt decrypts ciphertext with the appropriate key and returns plaintext.
+// Accepts either "id:ciphertext" format or legacy "ciphertext" (v1).
 func (e *Encryptor) Decrypt(input string) (string, error) {
+	if input == "" {
+		return "", fmt.Errorf("kms: decrypt: empty input")
+	}
+
 	var keyID string
 	var hexCiphertext string
 
@@ -107,6 +112,10 @@ func (e *Encryptor) Decrypt(input string) (string, error) {
 	if !hasColon {
 		keyID = "v1"
 		hexCiphertext = input
+	}
+
+	if hexCiphertext == "" {
+		return "", fmt.Errorf("kms: decrypt: empty ciphertext for key ID %q", keyID)
 	}
 
 	key, ok := e.keys[keyID]
