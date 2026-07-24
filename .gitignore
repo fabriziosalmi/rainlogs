@@ -31,3 +31,4 @@ docs/.vitepress/cache/
 /api
 /worker
 coverage.out
+docs/.vitepress/dist/
