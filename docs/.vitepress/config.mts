@@ -25,6 +25,9 @@ export default defineConfig({
   title: "Rainlogs",
   description: "High-performance, self-hosted log management system",
   base: '/rainlogs/',
+  // The hostname carries the base path on purpose: VitePress joins it with each
+  // page's route, so without it every URL in the sitemap would point at a 404.
+  sitemap: { hostname: 'https://fabriziosalmi.github.io/rainlogs/' },
   themeConfig: {
     logo: '/logo.svg',
     nav: [
