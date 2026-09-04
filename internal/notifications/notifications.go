@@ -52,9 +52,10 @@ func (n *SlackNotifier) SendAlert(ctx context.Context, projectID, severity, mess
 	}
 
 	color := "#36a64f" // Green
-	if severity == "error" || severity == "critical" {
+	switch severity {
+	case "error", "critical":
 		color = "#ff0000" // Red
-	} else if severity == "warning" {
+	case "warning":
 		color = "#ffcc00" // Yellow
 	}
 

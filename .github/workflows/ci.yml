@@ -23,9 +23,13 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        # v8 + golangci-lint v2: the v1 series is built with go1.24 and refuses a module
+        # targeting go1.25 ("the Go language version used to build golangci-lint is lower
+        # than the targeted Go version"), which is what `version: latest` kept resolving to.
+        # Pinned rather than `latest` so a release cannot turn CI red on its own.
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: v2.13.2
           args: --timeout=5m
 
   # ── Build ──────────────────────────────────────────────────────────────────
