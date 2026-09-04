@@ -36,13 +36,13 @@ type LogPullProcessor struct {
 	conf config.Config
 }
 
-func NewLogPullProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client, cfg config.Config, log *zap.Logger, notifier notifications.NotificationService) *LogPullProcessor {
+func NewLogPullProcessor(database *db.DB, encryptor *kms.Encryptor, store *storage.MultiStore, queueClient *asynq.Client, cfg config.Config, log *zap.Logger, notifier notifications.NotificationService) *LogPullProcessor {
 	// Instead of a global limiter, we will use a per-plan strategy in ProcessTask
 	return &LogPullProcessor{
-		db:       db,
-		kms:      kms,
-		storage:  storage,
-		queue:    queue,
+		db:       database,
+		kms:      encryptor,
+		storage:  store,
+		queue:    queueClient,
 		cfCfg:    cfg.Cloudflare,
 		log:      log,
 		notifier: notifier,
@@ -224,10 +224,10 @@ type LogVerifyProcessor struct {
 	log     *zap.Logger
 }
 
-func NewLogVerifyProcessor(db *db.DB, storage *storage.MultiStore, log *zap.Logger) *LogVerifyProcessor {
+func NewLogVerifyProcessor(database *db.DB, store *storage.MultiStore, log *zap.Logger) *LogVerifyProcessor {
 	return &LogVerifyProcessor{
-		db:      db,
-		storage: storage,
+		db:      database,
+		storage: store,
 		log:     log,
 	}
 }
@@ -279,10 +279,10 @@ type LogExpireProcessor struct {
 	log     *zap.Logger
 }
 
-func NewLogExpireProcessor(repo LogRepository, storage LogStorage, log *zap.Logger) *LogExpireProcessor {
+func NewLogExpireProcessor(repo LogRepository, store LogStorage, log *zap.Logger) *LogExpireProcessor {
 	return &LogExpireProcessor{
 		repo:    repo,
-		storage: storage,
+		storage: store,
 		log:     log,
 	}
 }
@@ -320,10 +320,10 @@ type ZoneScheduler struct {
 	interval time.Duration
 }
 
-func NewZoneScheduler(db *db.DB, queue *asynq.Client, log *zap.Logger, interval time.Duration) *ZoneScheduler {
+func NewZoneScheduler(database *db.DB, queueClient *asynq.Client, log *zap.Logger, interval time.Duration) *ZoneScheduler {
 	return &ZoneScheduler{
-		db:       db,
-		queue:    queue,
+		db:       database,
+		queue:    queueClient,
 		log:      log,
 		interval: interval,
 	}

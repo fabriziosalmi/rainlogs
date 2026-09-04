@@ -29,13 +29,13 @@ type Handlers struct {
 	Export  *ExportHandler
 }
 
-func NewHandlers(db *db.DB, kms *kms.Encryptor, queue *asynq.Client, store *storage.MultiStore) *Handlers {
+func NewHandlers(database *db.DB, encryptor *kms.Encryptor, queueClient *asynq.Client, store *storage.MultiStore) *Handlers {
 	return &Handlers{
-		db:      db,
-		kms:     kms,
-		queue:   queue,
+		db:      database,
+		kms:     encryptor,
+		queue:   queueClient,
 		storage: store,
-		Export:  NewExportHandler(db, queue, kms),
+		Export:  NewExportHandler(database, queueClient, encryptor),
 	}
 }
 

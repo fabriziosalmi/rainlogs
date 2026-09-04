@@ -29,11 +29,11 @@ type LogExportProcessor struct {
 	notifier notifications.NotificationService
 }
 
-func NewLogExportProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, log *zap.Logger, notifier notifications.NotificationService) *LogExportProcessor {
+func NewLogExportProcessor(database *db.DB, encryptor *kms.Encryptor, store *storage.MultiStore, log *zap.Logger, notifier notifications.NotificationService) *LogExportProcessor {
 	return &LogExportProcessor{
-		db:       db,
-		kms:      kms,
-		storage:  storage,
+		db:       database,
+		kms:      encryptor,
+		storage:  store,
 		log:      log,
 		notifier: notifier,
 	}
