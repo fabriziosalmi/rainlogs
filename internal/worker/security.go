@@ -34,16 +34,16 @@ type SecurityEventsProcessor struct {
 	notifier notifications.NotificationService
 }
 
-func NewSecurityEventsProcessor(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, queue *asynq.Client, cfCfg config.CloudflareConfig, log *zap.Logger, notifier notifications.NotificationService) *SecurityEventsProcessor {
+func NewSecurityEventsProcessor(database *db.DB, encryptor *kms.Encryptor, store *storage.MultiStore, queueClient *asynq.Client, cfCfg config.CloudflareConfig, log *zap.Logger, notifier notifications.NotificationService) *SecurityEventsProcessor {
 	var limiter *rate.Limiter
 	if cfCfg.RateLimit > 0 {
 		limiter = rate.NewLimiter(rate.Limit(cfCfg.RateLimit), 1)
 	}
 	return &SecurityEventsProcessor{
-		db:       db,
-		kms:      kms,
-		storage:  storage,
-		queue:    queue,
+		db:       database,
+		kms:      encryptor,
+		storage:  store,
+		queue:    queueClient,
 		cfCfg:    cfCfg,
 		log:      log,
 		limiter:  limiter,

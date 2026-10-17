@@ -1,21 +1,19 @@
+version: "2"
+run:
+  go: "1.25"
 linters:
-  disable-all: true
+  default: none
   enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
     - bodyclose
     - contextcheck
+    - errcheck
     - exhaustive
     - gochecknoinits
     - gocritic
     - godot
-    - gofmt
-    - goimports
     - gosec
+    - govet
+    - ineffassign
     - misspell
     - noctx
     - nolintlint
@@ -23,51 +21,75 @@ linters:
     - revive
     - rowserrcheck
     - sqlclosecheck
+    - staticcheck
     - unconvert
     - unparam
+    - unused
     - whitespace
-
-linters-settings:
-  gofmt:
-    simplify: true
-  goimports:
-    local-prefixes: github.com/fabriziosalmi/rainlogs
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment  # too noisy for this project size
-  gosec:
-    excludes:
-      - G115  # integer overflow conversion (false positives with pgx)
-  revive:
+  settings:
+    gocritic:
+      disabled-checks:
+        - hugeParam
+        - unnamedResult
+        - tooManyResultsChecker
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+    gosec:
+      excludes:
+        - G115
+    govet:
+      disable:
+        - fieldalignment
+      enable-all: true
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+        - name: unused-parameter
+          severity: warning
+        - name: var-naming
+          severity: warning
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: exported
-        severity: warning
-      - name: unused-parameter
-        severity: warning
-      - name: var-naming
-        severity: warning
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - style
-      - performance
-    disabled-checks:
-      - hugeParam       # structs passed by value intentionally in some places
-      - unnamedResult
-      - tooManyResultsChecker  # MultiStore.PutLogs returns provider metadata (key, sha, provider, bytes, lines, err) by design
-  misspell:
-    locale: US
-
+      - linters:
+          - errcheck
+          - gosec
+        path: _test\.go
+      - linters:
+          - gocritic
+          - godot
+          - gosec
+        path: migrations/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-rules:
-    - path: "_test\\.go"
-      linters: [gosec, errcheck]
-    - path: "migrations/"
-      linters: [gosec, gocritic, godot]
   max-issues-per-linter: 0
   max-same-issues: 0
-
-run:
-  timeout: 5m
-  go: "1.25"
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/fabriziosalmi/rainlogs
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

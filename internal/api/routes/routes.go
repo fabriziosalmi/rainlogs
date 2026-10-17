@@ -11,8 +11,8 @@ import (
 	"github.com/fabriziosalmi/rainlogs/internal/storage"
 )
 
-func Register(e *echo.Echo, database *db.DB, kms *kms.Encryptor, jwtSecret string, queue *asynq.Client, store *storage.MultiStore) {
-	h := handlers.NewHandlers(database, kms, queue, store)
+func Register(e *echo.Echo, database *db.DB, encryptor *kms.Encryptor, jwtSecret string, queue *asynq.Client, store *storage.MultiStore) {
+	h := handlers.NewHandlers(database, encryptor, queue, store)
 
 	// Public — self-registration only; profile reads require auth (own-record only).
 	e.POST("/customers", h.CreateCustomer)

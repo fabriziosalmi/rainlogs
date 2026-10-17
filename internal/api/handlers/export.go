@@ -21,8 +21,8 @@ type ExportHandler struct {
 	kms   *kms.Encryptor
 }
 
-func NewExportHandler(db *db.DB, queue *asynq.Client, kms *kms.Encryptor) *ExportHandler {
-	return &ExportHandler{db: db, queue: queue, kms: kms}
+func NewExportHandler(database *db.DB, queueClient *asynq.Client, encryptor *kms.Encryptor) *ExportHandler {
+	return &ExportHandler{db: database, queue: queueClient, kms: encryptor}
 }
 
 type CreateExportRequest struct {

@@ -30,11 +30,11 @@ type InstantLogsManager struct {
 	streams map[string]context.CancelFunc
 }
 
-func NewInstantLogsManager(db *db.DB, kms *kms.Encryptor, storage *storage.MultiStore, cfCfg config.CloudflareConfig, log *zap.Logger, notifier notifications.NotificationService) *InstantLogsManager {
+func NewInstantLogsManager(database *db.DB, encryptor *kms.Encryptor, store *storage.MultiStore, cfCfg config.CloudflareConfig, log *zap.Logger, notifier notifications.NotificationService) *InstantLogsManager {
 	return &InstantLogsManager{
-		db:       db,
-		kms:      kms,
-		storage:  storage,
+		db:       database,
+		kms:      encryptor,
+		storage:  store,
 		cfCfg:    cfCfg,
 		log:      log,
 		notifier: notifier,
